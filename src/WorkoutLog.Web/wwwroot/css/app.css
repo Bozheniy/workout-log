@@ -632,7 +632,8 @@ h1 {
 }
 .exercise-preview {
     padding: 18px 19px;
-    display: flex;
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr) auto;
     align-items: center;
     gap: 16px;
 }
@@ -1734,6 +1735,7 @@ input[type="file"]::file-selector-button {
     .exercise-preview {
         padding: 16px 13px;
         gap: 11px;
+        grid-template-columns: 30px minmax(0, 1fr);
     }
     .exercise-preview h3 {
         font-size: 12px;

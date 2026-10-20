@@ -18,6 +18,8 @@ public sealed class LocalState
     public int SelectedDay { get; set; }
     public List<WorkoutSession> Sessions { get; set; } = [];
     public List<PendingUpload> Outbox { get; set; } = [];
+    // Настройки привязаны к конкретному упражнению конкретного листа.
+    public Dictionary<string, ExerciseProgressionSettings> ProgressionSettings { get; set; } = [];
 }
 
 public sealed class WorkoutPlan
@@ -83,6 +85,8 @@ public sealed class ExerciseResult
     public string BaselineLoad { get; set; } = "";
     public string BaselineReserve { get; set; } = "";
     public bool Skipped { get; set; }
+    // null означает, что пользователь ещё не оценивал технику.
+    public bool? TechniqueMaintained { get; set; }
     public List<SetResult> Sets { get; set; } = [];
 }
 

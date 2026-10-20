@@ -1,0 +1,127 @@
+<section class="progression-panel" aria-label="@($"Прошлый результат и цель: {Context.ExerciseName}")">
+    <div class="progression-heading">
+        <span class="progression-kicker">ПРОШЛЫЙ РАЗ → СЕГОДНЯ</span>
+        @if (Previous is not null)
+        {
+            <span class="progression-source">
+                Неделя @Previous.Week
+                @if (Previous.FinishedAt is not null)
+                {
+                    <span> · @Previous.FinishedAt.Value.ToLocalTime().ToString("dd.MM")</span>
+                }
+                · @Previous.Source
+            </span>
+        }
+        else
+        {
+            <span class="progression-source">Раньше в этой программе не записано</span>
+        }
+    </div>
+    <h4>@Advice.Title</h4>
+    @if (Previous is { Parsed: false })
+    {
+        <div class="progression-raw">
+            <strong>Прошлая нагрузка из таблицы</strong>
+            <p>@Previous.RawLoad</p>
+            @if (!string.IsNullOrWhiteSpace(Previous.RawReserve))
+            {
+                <p>Запас: @Previous.RawReserve</p>
+            }
+        </div>
+    }
+    @if (Previous is null && Advice.Goals.Count > 0)
+    {
+        <p class="progression-start">
+            <strong>@Context.SetCount × @Advice.Goals[0].Repetitions повторений</strong>
+            <span>Запас по подходам: @string.Join(" / ", Advice.Goals.Select(goal => goal.Reserve))</span>
+        </p>
+    }
+    @if (Previous?.Sets.Count > 0)
+    {
+        <table class="progression-table">
+            <caption class="sr-only">Сравнение подходов: прошлые результаты и рекомендуемая цель</caption>
+            <thead>
+                <tr>
+                    <th scope="col">№</th>
+                    <th scope="col">Было</th>
+                    <th scope="col">Цель</th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (var number = 1; number <= ComparisonRows; number++)
+                {
+                    var past = Previous?.Sets.SingleOrDefault(set => set.Number == number);
+                    var goal = Advice.Goals.SingleOrDefault(set => set.Number == number);
+                    <tr>
+                        <th scope="row">@number.ToString("00")</th>
+                        <td>
+                            @if (past is not null)
+                            {
+                                <strong>@Weight(past.Weight) кг × @past.Repetitions</strong>
+                                <small>запас @(past.Reserve?.ToString() ?? "не записан")</small>
+                            }
+                            else
+                            {
+                                <span class="muted">Нет записи</span>
+                            }
+                        </td>
+                        <td class="progression-goal">
+                            @if (goal is not null)
+                            {
+                                <strong>@(goal.Weight is null ? "Подбери вес" : Weight(goal.Weight.Value) + " кг") × @goal.Repetitions</strong>
+                                <small>запас @goal.Reserve</small>
+                            }
+                            else
+                            {
+                                <span class="muted">Без расчёта</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    <p class="progression-explanation">@Advice.Explanation</p>
+    @if (Advice.TechniqueUnknown)
+    {
+        <p class="progression-condition">Техника в прошлый раз не отмечена. Цель подходит только при выполнении прошлых подходов без её нарушения.</p>
+    }
+    @if (Advice.Goals.Count > 0)
+    {
+        <p class="progression-footnote">Цель — ориентир. Записывай фактический результат; не добирай повторы ценой техники и запаса.</p>
+    }
+    <details class="progression-settings">
+        <summary>Параметры расчёта <Icon Name="chevron" Size="15" /></summary>
+        <p>Шаг — доступная прибавка именно для этого упражнения. Начальные значения: 2,5 кг и запас от 2 до 0; измени их под инвентарь и указания тренера.</p>
+        <div class="progression-inputs">
+            <label>
+                Шаг веса, кг
+                <input class="field" type="text" inputmode="decimal" maxlength="6"
+                       aria-label="@($"Шаг веса: {Context.ExerciseName}")"
+                       @bind="StepInput" @bind:event="oninput" @bind:after="OnDraftChanged" />
+            </label>
+            <label>
+                Запас в первом
+                <input class="field" type="text" inputmode="numeric" maxlength="2"
+                       aria-label="@($"Запас в первом подходе: {Context.ExerciseName}")"
+                       @bind="FirstReserveInput" @bind:event="oninput" @bind:after="OnDraftChanged" />
+            </label>
+            <label>
+                Запас в последнем
+                <input class="field" type="text" inputmode="numeric" maxlength="2"
+                       aria-label="@($"Запас в последнем подходе: {Context.ExerciseName}")"
+                       @bind="LastReserveInput" @bind:event="oninput" @bind:after="OnDraftChanged" />
+            </label>
+        </div>
+        <button class="button secondary" disabled="@Store.StorageFailed" @onclick="SaveSettingsAsync">Сохранить параметры</button>
+        <p>Запас промежуточных подходов рассчитывается между первым и последним. Для одного подхода используется последний. Настройки сохраняются на этом устройстве.</p>
+        @if (SettingsSaved)
+        {
+            <p role="status">Параметры сохранены, цель пересчитана.</p>
+        }
+        @if (SettingsError is not null)
+        {
+            <p class="progression-error" role="alert">@SettingsError</p>
+        }
+    </details>
+</section>

@@ -101,10 +101,12 @@ else
                         <div><h3>@exercise.Name</h3><p>@prescription.Sets подхода <span>×</span> @prescription.Repetitions повторений</p>
                             @if (!string.IsNullOrWhiteSpace(prescription.ExistingLoad))
                             {
-                                <small class="previous-result">В таблице: @prescription.ExistingLoad</small>
+                                <small class="previous-result">В таблице за эту неделю: @prescription.ExistingLoad</small>
                             }
                         </div>
                         <span class="exercise-symbol"><Icon Name="dumbbell" Size="23" /></span>
+                        <ProgressionPanel Context="@ProgressionFor(exercise.Row, exercise.Name, prescription.Sets, prescription.Repetitions)"
+                                          @key="@($"preview-{Store.State.SelectedWeek}-{exercise.Row}")" />
                     </article>
                 }
                 <p class="plan-hint"><Icon Name="shield" Size="16" /> Нажми «Начать тренировку», чтобы записывать подходы.</p>
@@ -136,8 +138,10 @@ else
                             <div class="exercise-body">
                                 @if (!string.IsNullOrWhiteSpace(exercise.BaselineLoad))
                                 {
-                                    <div class="previous-result">В таблице: @exercise.BaselineLoad</div>
+                                    <div class="previous-result">В таблице за эту неделю: @exercise.BaselineLoad</div>
                                 }
+                                <ProgressionPanel Context="@ProgressionFor(exercise.Row, exercise.Name, exercise.Sets.Count, exercise.PlannedRepetitions)"
+                                                  @key="@(Session.Id + exercise.Row)" />
                                 <div class="set-labels"><span>ПОДХОД</span><span>ВЕС, КГ</span><span>ПОВТОРЫ</span><span>ЗАПАС</span><span></span></div>
                                 @for (var setNumber = 0; setNumber < exercise.Sets.Count; setNumber++)
                                 {
@@ -165,6 +169,18 @@ else
                                     {
                                         <button class="text-button" @onclick="() => SkipAsync(exercise.Row)">@(exercise.Skipped ? "Вернуть" : "Пропустить остаток")</button>
                                     }
+                                </div>
+                                <div class="technique-check">
+                                    <label for="@($"technique-{exercise.Row}")">Техника в этой тренировке</label>
+                                    <select id="@($"technique-{exercise.Row}")" class="field"
+                                            value="@TechniqueValue(exercise)"
+                                            disabled="@(Session.FinishedAt is not null || Store.StorageFailed)"
+                                            @onchange="args => SaveTechniqueAsync(exercise.Row, args)">
+                                        <option value="">Ещё не отмечено</option>
+                                        <option value="yes">Сохранена во всех подходах</option>
+                                        <option value="no">Были нарушения</option>
+                                    </select>
+                                    <small>Учитывается в следующей рекомендации. Оценка хранится на устройстве и в резервной копии.</small>
                                 </div>
                             </div>
                         }

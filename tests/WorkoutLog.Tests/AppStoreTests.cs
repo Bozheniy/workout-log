@@ -9,6 +9,37 @@ namespace WorkoutLog.Tests;
 public sealed class AppStoreTests
 {
     [Fact]
+    public async Task Progression_settings_and_technique_survive_reload_and_backup_merge()
+    {
+        var browser = new StorageJavascript();
+        var store = CreateStore(browser);
+        await store.InitializeAsync();
+        await store.StartAsync();
+        await store.MutateAsync(state =>
+        {
+            state.ProgressionSettings["exercise"] = new ExerciseProgressionSettings { WeightStep = 1.25m };
+            state.Sessions[0].Exercises[0].TechniqueMaintained = false;
+        });
+        var reloaded = CreateStore(browser);
+        await reloaded.InitializeAsync();
+        Assert.Equal(1.25m, reloaded.State.ProgressionSettings["exercise"].WeightStep);
+        Assert.False(reloaded.CurrentSession!.Exercises[0].TechniqueMaintained);
+
+        var destination = CreateStore(new StorageJavascript());
+        await destination.InitializeAsync();
+        await destination.MutateAsync(state =>
+            state.ProgressionSettings["exercise"] = new ExerciseProgressionSettings { WeightStep = 5 });
+        await destination.ImportAsync(JsonSerializer.Serialize(reloaded.State));
+        Assert.Equal(5, destination.State.ProgressionSettings["exercise"].WeightStep);
+        Assert.False(destination.State.Sessions[0].Exercises[0].TechniqueMaintained);
+
+        var fresh = CreateStore(new StorageJavascript());
+        await fresh.InitializeAsync();
+        await fresh.ImportAsync(JsonSerializer.Serialize(reloaded.State));
+        Assert.Equal(1.25m, fresh.State.ProgressionSettings["exercise"].WeightStep);
+    }
+
+    [Fact]
     public async Task Decimal_separator_survives_incremental_mobile_typing_and_reload()
     {
         var browser = new StorageJavascript();

@@ -139,6 +139,38 @@ public partial class Home
         return weight?.ToString("0.##", CultureInfo.InvariantCulture) ?? "";
     }
 
+    private ProgressionContext ProgressionFor(int row, string name, int sets, string repetitions)
+    {
+        return new ProgressionContext(Plan!.SpreadsheetId, Plan.SheetId,
+            CurrentDay!.HeaderRow, row, name, Store.State.SelectedWeek,
+            sets, repetitions, Session?.StartedAt);
+    }
+
+    private Task<bool> SaveTechniqueAsync(int row, ChangeEventArgs arguments)
+    {
+        var sessionId = Session!.Id;
+        var value = arguments.Value?.ToString();
+        return Store.MutateAsync(state =>
+        {
+            var session = state.Sessions.Single(item => item.Id == sessionId);
+            if (session.FinishedAt is null)
+            {
+                var exercise = session.Exercises.Single(item => item.Row == row);
+                exercise.TechniqueMaintained = value == "yes" ? true : value == "no" ? false : null;
+            }
+        });
+    }
+
+    private static string TechniqueValue(ExerciseResult exercise)
+    {
+        return exercise.TechniqueMaintained switch
+        {
+            true => "yes",
+            false => "no",
+            _ => ""
+        };
+    }
+
     private void OnStoreChanged()
     {
         _ = InvokeAsync(StateHasChanged);

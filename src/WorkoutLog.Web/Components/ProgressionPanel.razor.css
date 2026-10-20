@@ -1,0 +1,172 @@
+.progression-panel {
+    grid-column: 1 / -1;
+    min-width: 0;
+    padding: 16px;
+    margin: 6px 0 18px;
+    border: 1px solid #e3e6dc;
+    border-radius: 10px;
+    background: #f8f9f5;
+}
+.progression-heading {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px 14px;
+    margin-bottom: 12px;
+}
+.progression-kicker {
+    color: #58664e;
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: .7px;
+}
+.progression-source {
+    color: #6e7466;
+    font-size: 11px;
+    line-height: 1.5;
+}
+h4 {
+    margin: 0 0 10px;
+    font-size: 15px;
+    line-height: 1.4;
+}
+.progression-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    margin-bottom: 12px;
+}
+.progression-table th,
+.progression-table td {
+    text-align: left;
+    padding: 10px 6px;
+    border-bottom: 1px solid #e3e6dc;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+}
+.progression-table th:first-child {
+    width: 32px;
+    font-size: 11px;
+    color: #69745f;
+    font-weight: 500;
+}
+.progression-table thead th {
+    color: #6e7466;
+    font-size: 11px;
+    font-weight: 600;
+}
+.progression-table strong {
+    display: block;
+    font-size: 13px;
+    line-height: 1.5;
+}
+.progression-table small {
+    display: block;
+    color: #65715b;
+    font-size: 11px;
+    margin-top: 3px;
+}
+.progression-table .muted {
+    font-size: 12px;
+}
+.progression-goal {
+    background: #edf2e8;
+}
+.progression-goal strong {
+    color: #3c5932;
+}
+.progression-panel .progression-explanation,
+.progression-panel .progression-raw p,
+.progression-panel .progression-start {
+    color: #515b48;
+    font-size: 12px;
+    line-height: 1.7;
+    margin: 10px 0;
+}
+.progression-start strong,
+.progression-panel .progression-start span {
+    display: block;
+    color: #3c5932;
+    padding: 0;
+}
+.progression-raw {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 12px;
+}
+.progression-panel .progression-footnote,
+.progression-panel .progression-condition {
+    font-size: 11px;
+    line-height: 1.65;
+    margin: 10px 0;
+    color: #6e7466;
+}
+.progression-panel .progression-condition {
+    border-left: 3px solid #e6b287;
+    padding-left: 10px;
+    color: #835b37;
+}
+.progression-settings {
+    border-top: 1px solid #e3e6dc;
+    margin-top: 12px;
+    padding-top: 5px;
+}
+.progression-settings summary {
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    min-height: 44px;
+    padding: 12px 0;
+    color: #515b48;
+}
+.progression-settings summary svg {
+    margin-left: 6px;
+}
+.progression-settings p {
+    font-size: 11px;
+    line-height: 1.65;
+    margin: 8px 0;
+    color: #68725f;
+}
+.progression-inputs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin: 12px 0;
+}
+.progression-inputs label {
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.5;
+}
+.progression-inputs input {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    height: 44px;
+    margin-top: 6px;
+    font-size: 16px;
+    padding: 8px;
+}
+.progression-settings .progression-error {
+    color: #a3482b;
+}
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+@media (max-width: 700px) {
+    .progression-panel {
+        padding: 12px;
+        margin-bottom: 16px;
+    }
+    .progression-table strong {
+        font-size: 12px;
+    }
+    .progression-inputs {
+        gap: 7px;
+    }
+}

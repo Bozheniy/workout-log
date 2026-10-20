@@ -45,6 +45,8 @@ public sealed class AppStore(
             {
                 throw new InvalidOperationException("Эта версия данных новее приложения. Обновите приложение.");
             }
+            // Старые резервные копии могли не содержать настроек прогрессии.
+            State.ProgressionSettings ??= [];
             if (string.IsNullOrEmpty(State.Settings.SpreadsheetUrl))
             {
                 State.Settings.SpreadsheetUrl = configuration["DefaultSpreadsheetUrl"] ?? "";
@@ -455,6 +457,12 @@ public sealed class AppStore(
                         state.Outbox.Add(pending);
                     }
                 }
+            }
+            // Параметры новых упражнений переносим вместе с историей.
+            // Уже настроенные на этом устройстве значения не перезаписываем.
+            foreach (var (key, settings) in incoming.ProgressionSettings ?? [])
+            {
+                state.ProgressionSettings.TryAdd(key, settings);
             }
             state.Plan ??= incoming.Plan;
         });

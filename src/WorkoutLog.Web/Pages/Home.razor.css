@@ -1,0 +1,21 @@
+.technique-check {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid #e5e5de;
+}
+.technique-check label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+.technique-check select {
+    font-size: 16px;
+    min-height: 44px;
+}
+.technique-check small {
+    display: block;
+    font-size: 11px;
+    color: #6e7466;
+    line-height: 1.6;
+}
