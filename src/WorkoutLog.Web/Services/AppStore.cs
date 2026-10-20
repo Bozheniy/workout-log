@@ -49,6 +49,11 @@ public sealed class AppStore(
             {
                 State.Settings.SpreadsheetUrl = configuration["DefaultSpreadsheetUrl"] ?? "";
             }
+            if (string.IsNullOrWhiteSpace(State.Settings.GoogleClientId))
+            {
+                // Публичный ID уже настроен для сайта. Свою настройку пользователя сохраняем.
+                State.Settings.GoogleClientId = configuration["DefaultGoogleClientId"] ?? "";
+            }
             reference = DotNetObjectReference.Create(this);
             Online = await javascript.InvokeAsync<bool>("workout.initialize", reference);
             OfflineReady = await javascript.InvokeAsync<bool>("workout.pwa.ready");

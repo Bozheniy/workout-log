@@ -17,6 +17,22 @@ public partial class Admin
     private int RestSeconds { get; set; } = 120;
     private string? InstallHint { get; set; }
 
+    private string GoogleConnectionHint
+    {
+        get
+        {
+            if (Store.SignedIn)
+            {
+                return "Аккаунт подключён";
+            }
+            if (string.IsNullOrWhiteSpace(ClientId))
+            {
+                return "Настрой подключение и войди в свой аккаунт";
+            }
+            return "Подключение настроено. Войди в свой аккаунт";
+        }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         Store.Changed += OnStoreChanged;

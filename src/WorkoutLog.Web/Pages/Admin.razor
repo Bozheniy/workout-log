@@ -19,7 +19,14 @@
             }
         </section>
         <section class="settings-card">
-            <div class="settings-heading"><span class="settings-icon"><Icon Name="cloud" /></span><div><h2>Отправка в Google</h2><p>@(Store.SignedIn ? "Аккаунт подключён" : "Настрой подключение и войди в свой аккаунт")</p></div><span class="step-number">02</span></div>
+            <div class="settings-heading">
+                <span class="settings-icon"><Icon Name="cloud" /></span>
+                <div>
+                    <h2>Отправка в Google</h2>
+                    <p>@GoogleConnectionHint</p>
+                </div>
+                <span class="step-number">02</span>
+            </div>
             <p class="body-copy">Для чтения открытого плана вход не нужен. Для отправки результатов нужен аккаунт с правами редактора таблицы.</p>
             <label for="google-client">Google OAuth Client ID</label>
             <input id="google-client" class="field" type="text" autocomplete="off" spellcheck="false" @bind="ClientId" placeholder="123456789-….apps.googleusercontent.com" />
