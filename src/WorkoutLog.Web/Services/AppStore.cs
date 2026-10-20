@@ -220,6 +220,16 @@ public sealed class AppStore(
         });
     }
 
+    public Task<bool> FillRemainingSetsAsync(string sessionId, int row, string weight, string repetitions)
+    {
+        // Все подходы сохраняются одной транзакцией IndexedDB, включая работу без сети.
+        return MutateAsync(state =>
+        {
+            var session = state.Sessions.Single(item => item.Id == sessionId);
+            WorkoutRules.FillRemainingSets(session, row, weight, repetitions);
+        });
+    }
+
     public async Task<bool> ToggleSetAsync(string sessionId, int row, int index)
     {
         return await MutateAsync(state =>

@@ -21,6 +21,49 @@ public partial class ProgressionPanel
     private bool SettingsSaved { get; set; }
     private int ComparisonRows => Math.Max(Context.SetCount,
         Previous?.Sets.Select(set => set.Number).DefaultIfEmpty(0).Max() ?? 0);
+    private string PreviousWeightSummary => Previous is null ? "Нет записи"
+        : !Previous.Parsed ? "Запись в таблице"
+        : WeightSummary(Previous.Sets.Select(set => (decimal?)set.Weight));
+    private string PreviousRepetitionSummary => Previous?.Parsed == true
+        ? RepetitionSummary(Previous.Sets.Select(set => set.Repetitions)) : "";
+    private string GoalWeightSummary => WeightSummary(Advice.Goals.Select(set => set.Weight));
+
+    private static string WeightSummary(IEnumerable<decimal?> weights)
+    {
+        var values = weights.ToArray();
+        if (values.Length == 0)
+        {
+            return "—";
+        }
+        if (values.All(value => value is null))
+        {
+            return "Подбери вес";
+        }
+        var text = values.Distinct().Count() == 1
+            ? Weight(values[0]!.Value)
+            : string.Join(" / ", values.Select(value => value is null ? "—" : Weight(value.Value)));
+        return text + " кг";
+    }
+
+    private static string RepetitionSummary(IEnumerable<int> repetitions)
+    {
+        var values = repetitions.ToArray();
+        if (values.Length == 0)
+        {
+            return "";
+        }
+        return values.Distinct().Count() == 1
+            ? $"{values.Length} × {values[0]} повт."
+            : string.Join(" / ", values) + " повт.";
+    }
+
+    private static string ReserveSummary(IEnumerable<int?> reserves)
+    {
+        var values = reserves.ToArray();
+        return values.Distinct().Count() == 1
+            ? values[0]?.ToString() ?? "не записан"
+            : string.Join(" / ", values.Select(value => value?.ToString() ?? "—"));
+    }
 
     protected override void OnParametersSet()
     {

@@ -1,23 +1,11 @@
 .progression-panel {
     grid-column: 1 / -1;
     min-width: 0;
-    padding: 16px;
-    margin: 6px 0 18px;
+    padding: 12px;
+    margin: 0 0 12px;
     border: 1px solid #e3e6dc;
     border-radius: 10px;
     background: #f8f9f5;
-}
-.progression-heading {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 7px 14px;
-    margin-bottom: 12px;
-}
-.progression-kicker {
-    color: #58664e;
-    font-size: 10px;
-    font-weight: 750;
-    letter-spacing: .7px;
 }
 .progression-source {
     color: #6e7466;
@@ -25,9 +13,58 @@
     line-height: 1.5;
 }
 h4 {
-    margin: 0 0 10px;
-    font-size: 15px;
+    margin: 0 0 8px;
+    font-size: 13px;
     line-height: 1.4;
+}
+.progression-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+.progression-summary > div {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 9px;
+    border-radius: 7px;
+    overflow-wrap: anywhere;
+    font-size: 12px;
+    line-height: 1.5;
+}
+.summary-past {
+    background: #f0f1eb;
+}
+.summary-goal {
+    background: #e9f0e2;
+    color: #3c5932;
+}
+.summary-label,
+.progression-summary small {
+    font-size: 10px;
+    color: #65715b;
+}
+.progression-summary strong {
+    font-size: 14px;
+}
+.progression-panel .compact-condition {
+    margin: 8px 0 0;
+    font-size: 10px;
+    line-height: 1.5;
+    color: #68725f;
+}
+.progression-details > summary {
+    cursor: pointer;
+    padding: 10px 0 3px;
+    min-height: 36px;
+    font-size: 11px;
+    color: #58664e;
+}
+.progression-panel summary {
+    list-style: none;
+}
+.progression-panel summary::-webkit-details-marker {
+    display: none;
 }
 .progression-table {
     width: 100%;
@@ -75,18 +112,11 @@ h4 {
     color: #3c5932;
 }
 .progression-panel .progression-explanation,
-.progression-panel .progression-raw p,
-.progression-panel .progression-start {
+.progression-panel .progression-raw p {
     color: #515b48;
     font-size: 12px;
     line-height: 1.7;
     margin: 10px 0;
-}
-.progression-start strong,
-.progression-panel .progression-start span {
-    display: block;
-    color: #3c5932;
-    padding: 0;
 }
 .progression-raw {
     white-space: pre-wrap;
@@ -161,7 +191,7 @@ h4 {
 @media (max-width: 700px) {
     .progression-panel {
         padding: 12px;
-        margin-bottom: 16px;
+        margin-bottom: 12px;
     }
     .progression-table strong {
         font-size: 12px;

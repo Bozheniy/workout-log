@@ -9,6 +9,116 @@ namespace WorkoutLog.Tests;
 public sealed class AppStoreTests
 {
     [Fact]
+    public async Task Bulk_entry_persists_all_unfinished_sets_without_inventing_reserve_or_completion()
+    {
+        var browser = new StorageJavascript();
+        var store = CreateStore(browser);
+        await store.InitializeAsync();
+        await store.StartAsync();
+        var id = store.CurrentSession!.Id;
+        Assert.True(await store.FillRemainingSetsAsync(id, 5, "60,5", "10"));
+
+        var reloaded = CreateStore(browser);
+        await reloaded.InitializeAsync();
+        Assert.All(reloaded.CurrentSession!.Exercises[0].Sets, set =>
+        {
+            Assert.Equal(60.5m, set.Weight);
+            Assert.Equal("60,5", set.WeightInput);
+            Assert.Equal(10, set.Repetitions);
+            Assert.Null(set.Reserve);
+            Assert.False(set.Done);
+        });
+        Assert.Empty(reloaded.State.Outbox);
+        Assert.Null(reloaded.CurrentSession.FinishedAt);
+    }
+
+    [Fact]
+    public async Task Bulk_entry_preserves_completed_results_and_each_sets_reserve()
+    {
+        var store = CreateStore(new StorageJavascript());
+        await store.InitializeAsync();
+        await store.StartAsync();
+        var id = store.CurrentSession!.Id;
+        await store.MutateAsync(state =>
+        {
+            state.Sessions[0].Exercises[0].Sets[0] = new SetResult
+            {
+                Weight = 50, WeightInput = "50", Repetitions = 8, Reserve = 2, Done = true
+            };
+            state.Sessions[0].Exercises[0].Sets[1].Reserve = 1;
+        });
+        Assert.True(await store.FillRemainingSetsAsync(id, 5, "65", "12"));
+        var sets = store.CurrentSession!.Exercises[0].Sets;
+        Assert.Equal(50, sets[0].Weight);
+        Assert.Equal(8, sets[0].Repetitions);
+        Assert.Equal(2, sets[0].Reserve);
+        Assert.True(sets[0].Done);
+        Assert.Equal(65, sets[1].Weight);
+        Assert.Equal(12, sets[1].Repetitions);
+        Assert.Equal(1, sets[1].Reserve);
+        Assert.False(sets[1].Done);
+
+        await store.UpdateSetAsync(id, 5, 1, "reps", "11");
+        Assert.Equal(11, store.CurrentSession.Exercises[0].Sets[1].Repetitions);
+    }
+
+    [Theory]
+    [InlineData("-1", "10")]
+    [InlineData("50", "0")]
+    [InlineData("50", "10,5")]
+    [InlineData("", "10")]
+    [InlineData("2001", "10")]
+    [InlineData("50", "501")]
+    public async Task Invalid_bulk_input_never_partially_changes_saved_sets(string weight, string repetitions)
+    {
+        var browser = new StorageJavascript();
+        var store = CreateStore(browser);
+        await store.InitializeAsync();
+        await store.StartAsync();
+        var id = store.CurrentSession!.Id;
+        await store.FillRemainingSetsAsync(id, 5, "40", "8");
+        var revision = browser.Stored.Revision;
+        Assert.False(await store.FillRemainingSetsAsync(id, 5, weight, repetitions));
+        Assert.Equal(revision, browser.Stored.Revision);
+        Assert.All(store.CurrentSession.Exercises[0].Sets, set =>
+        {
+            Assert.Equal(40, set.Weight);
+            Assert.Equal(8, set.Repetitions);
+        });
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Bulk_entry_cannot_modify_finished_or_skipped_exercise(bool finished)
+    {
+        var store = CreateStore(new StorageJavascript());
+        await store.InitializeAsync();
+        await store.StartAsync();
+        await store.MutateAsync(state =>
+        {
+            state.Sessions[0].FinishedAt = finished ? DateTimeOffset.UtcNow : null;
+            state.Sessions[0].Exercises[0].Skipped = !finished;
+        });
+        Assert.False(await store.FillRemainingSetsAsync(store.CurrentSession!.Id, 5, "60", "10"));
+        Assert.All(store.CurrentSession.Exercises[0].Sets, set => Assert.Null(set.Weight));
+    }
+
+    [Fact]
+    public async Task Failed_bulk_save_keeps_all_previous_values()
+    {
+        var browser = new StorageJavascript();
+        var store = CreateStore(browser);
+        await store.InitializeAsync();
+        await store.StartAsync();
+        await store.FillRemainingSetsAsync(store.CurrentSession!.Id, 5, "0", "12");
+        browser.FailWrites = true;
+        Assert.False(await store.FillRemainingSetsAsync(store.CurrentSession.Id, 5, "50", "8"));
+        Assert.All(browser.Stored.Sessions[0].Exercises[0].Sets, set => Assert.Equal(0, set.Weight));
+        Assert.All(store.CurrentSession.Exercises[0].Sets, set => Assert.Equal(12, set.Repetitions));
+    }
+
+    [Fact]
     public async Task Progression_settings_and_technique_survive_reload_and_backup_merge()
     {
         var browser = new StorageJavascript();

@@ -43,6 +43,40 @@ public static class WorkoutRules
             && set.Reserve is >= 0 and <= 20;
     }
 
+    public static void FillRemainingSets(WorkoutSession session, int exerciseRow, string weightInput, string repetitionsInput)
+    {
+        if (session.FinishedAt is not null)
+        {
+            throw new InvalidOperationException("Завершённая тренировка доступна для просмотра.");
+        }
+        var exercise = session.Exercises.Single(item => item.Row == exerciseRow);
+        if (exercise.Skipped)
+        {
+            throw new InvalidOperationException("Сначала верните пропущенное упражнение.");
+        }
+
+        var normalizedWeight = weightInput.Trim().Replace(',', '.');
+        if (!decimal.TryParse(normalizedWeight, NumberStyles.AllowDecimalPoint,
+            CultureInfo.InvariantCulture, out var weight) || weight is < 0 or > 2000
+            || !int.TryParse(repetitionsInput.Trim(), NumberStyles.None,
+                CultureInfo.InvariantCulture, out var repetitions) || repetitions is < 1 or > 500)
+        {
+            throw new InvalidOperationException("Введите вес от 0 до 2000 кг и повторы от 1 до 500.");
+        }
+        var remaining = exercise.Sets.Where(set => !set.Done).ToList();
+        if (remaining.Count == 0)
+        {
+            throw new InvalidOperationException("Все подходы уже выполнены.");
+        }
+        // Проверяем всё до изменения. Запас и отметки выполнения остаются фактическими.
+        foreach (var set in remaining)
+        {
+            set.Weight = weight;
+            set.WeightInput = weightInput.Trim();
+            set.Repetitions = repetitions;
+        }
+    }
+
     public static PendingUpload Complete(WorkoutSession session)
     {
         if (session.FinishedAt is not null)

@@ -1,7 +1,66 @@
 .technique-check {
-    margin-top: 18px;
-    padding-top: 14px;
+    margin-top: 10px;
+    padding-top: 10px;
     border-top: 1px solid #e5e5de;
+}
+.quick-sets {
+    margin-bottom: 16px;
+}
+.quick-sets > strong {
+    display: block;
+    font-size: 12px;
+    margin-bottom: 9px;
+}
+.quick-set-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: end;
+}
+.quick-set-fields label {
+    display: block;
+    font-size: 10px;
+    color: #68725f;
+}
+.quick-set-fields input {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    height: 46px;
+    border: 1px solid #dfe3d7;
+    border-radius: 7px;
+    margin-top: 5px;
+    padding: 8px;
+    font-size: 16px;
+    text-align: center;
+    background: #fff;
+}
+.quick-set-fields button {
+    min-height: 46px;
+    padding: 10px 12px;
+    font-size: 11px;
+}
+.quick-saved,
+.quick-error {
+    display: block;
+    margin-top: 6px;
+    font-size: 11px;
+    color: #4c7441;
+}
+.quick-error {
+    color: #a3482b;
+}
+.current-sheet-result {
+    font-size: 11px;
+    color: #68725f;
+    margin-bottom: 10px;
+}
+.current-sheet-result summary {
+    cursor: pointer;
+    padding: 8px 0;
+}
+.current-sheet-result p {
+    white-space: pre-line;
 }
 .technique-check label {
     display: block;

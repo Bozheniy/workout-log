@@ -11,8 +11,9 @@ public partial class Home
     [Inject] private AppStore Store { get; set; } = default!;
     [Inject] private IJSRuntime Javascript { get; set; } = default!;
 
-    private HashSet<int> ExpandedRows { get; } = [];
-    private bool scrollToFirstExercise;
+    private int? ExpandedRow { get; set; }
+    private bool scrollToExpandedExercise;
+    private Dictionary<string, QuickSetDraft> QuickDrafts { get; } = [];
     private WorkoutPlan? Plan => Store.State.Plan;
     private TrainingDay? CurrentDay => Plan?.Days[Store.State.SelectedDay];
     private WorkoutSession? Session => Store.CurrentSession;
@@ -32,14 +33,14 @@ public partial class Home
 
     private async Task SelectWeekAsync(int week)
     {
-        ExpandedRows.Clear();
+        ExpandedRow = null;
         await Store.MutateAsync(state => state.SelectedWeek = week);
         ExpandFirstExercise();
     }
 
     private async Task SelectDayAsync(int day)
     {
-        ExpandedRows.Clear();
+        ExpandedRow = null;
         await Store.MutateAsync(state => state.SelectedDay = day);
         ExpandFirstExercise();
     }
@@ -48,25 +49,22 @@ public partial class Home
     {
         await Store.StartAsync();
         ExpandFirstExercise();
-        scrollToFirstExercise = true;
+        scrollToExpandedExercise = true;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (scrollToFirstExercise && ExpandedRows.Count > 0)
+        if (scrollToExpandedExercise && ExpandedRow is not null)
         {
-            scrollToFirstExercise = false;
-            await Javascript.InvokeVoidAsync("workout.scrollToExercise", ExpandedRows.First());
+            scrollToExpandedExercise = false;
+            await Javascript.InvokeVoidAsync("workout.scrollToExercise", ExpandedRow.Value);
         }
     }
 
     private void ExpandFirstExercise()
     {
-        var first = Session?.Exercises.FirstOrDefault(exercise => !exercise.Sets.All(set => set.Done));
-        if (first is not null)
-        {
-            ExpandedRows.Add(first.Row);
-        }
+        ExpandedRow = Session?.Exercises
+            .FirstOrDefault(exercise => !exercise.Skipped && !exercise.Sets.All(set => set.Done))?.Row;
     }
 
     private bool IsDayCompleted(TrainingDay day)
@@ -78,9 +76,44 @@ public partial class Home
 
     private void ToggleExpanded(int row)
     {
-        if (!ExpandedRows.Add(row))
+        // Открытой может быть только одна карточка; повторное нажатие закрывает её.
+        ExpandedRow = ExpandedRow == row ? null : row;
+        scrollToExpandedExercise = ExpandedRow is not null;
+    }
+
+    private QuickSetDraft GetQuickDraft(ExerciseResult exercise)
+    {
+        var key = $"{Session!.Id}:{exercise.Row}";
+        if (!QuickDrafts.TryGetValue(key, out var draft))
         {
-            ExpandedRows.Remove(row);
+            var first = exercise.Sets.FirstOrDefault(set => !set.Done);
+            draft = new QuickSetDraft
+            {
+                Weight = string.IsNullOrEmpty(first?.WeightInput) ? FormatWeight(first?.Weight) : first.WeightInput,
+                Repetitions = first?.Repetitions?.ToString() ?? ""
+            };
+            QuickDrafts[key] = draft;
+        }
+        return draft;
+    }
+
+    private async Task ApplyQuickDraftAsync(int row, QuickSetDraft draft)
+    {
+        draft.Saved = await Store.FillRemainingSetsAsync(Session!.Id, row, draft.Weight, draft.Repetitions);
+        draft.Error = draft.Saved ? null : Store.Error;
+    }
+
+    private sealed class QuickSetDraft
+    {
+        public string Weight { get; set; } = "";
+        public string Repetitions { get; set; } = "";
+        public bool Saved { get; set; }
+        public string? Error { get; set; }
+
+        public void Changed()
+        {
+            Saved = false;
+            Error = null;
         }
     }
 

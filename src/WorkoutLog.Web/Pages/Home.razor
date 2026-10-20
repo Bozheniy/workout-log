@@ -96,17 +96,30 @@ else
                 @foreach (var (exercise, index) in PlannedExercises.Select((value, index) => (value, index)))
                 {
                     var prescription = exercise.Weeks.Single(week => week.Number == Store.State.SelectedWeek);
-                    <article class="exercise-preview">
-                        <span class="exercise-number">@((index + 1).ToString("00"))</span>
-                        <div><h3>@exercise.Name</h3><p>@prescription.Sets подхода <span>×</span> @prescription.Repetitions повторений</p>
-                            @if (!string.IsNullOrWhiteSpace(prescription.ExistingLoad))
-                            {
-                                <small class="previous-result">В таблице за эту неделю: @prescription.ExistingLoad</small>
-                            }
-                        </div>
-                        <span class="exercise-symbol"><Icon Name="dumbbell" Size="23" /></span>
-                        <ProgressionPanel Context="@ProgressionFor(exercise.Row, exercise.Name, prescription.Sets, prescription.Repetitions)"
-                                          @key="@($"preview-{Store.State.SelectedWeek}-{exercise.Row}")" />
+                    var expanded = ExpandedRow == exercise.Row;
+                    <article id="@($"exercise-{exercise.Row}")" class="exercise-card">
+                        <button class="exercise-heading" @onclick="() => ToggleExpanded(exercise.Row)" aria-expanded="@(expanded ? "true" : "false")">
+                            <span class="exercise-number">@((index + 1).ToString("00"))</span>
+                            <span class="exercise-title">
+                                <strong>@exercise.Name</strong>
+                                <small>@prescription.Sets подхода × @prescription.Repetitions повторений</small>
+                            </span>
+                            <span class="chevron @(expanded ? "open" : "")"><Icon Name="chevron" Size="18" /></span>
+                        </button>
+                        @if (expanded)
+                        {
+                            <div class="exercise-body">
+                                @if (!string.IsNullOrWhiteSpace(prescription.ExistingLoad))
+                                {
+                                    <details class="current-sheet-result">
+                                        <summary>В таблице за эту неделю</summary>
+                                        <p>@prescription.ExistingLoad</p>
+                                    </details>
+                                }
+                                <ProgressionPanel Context="@ProgressionFor(exercise.Row, exercise.Name, prescription.Sets, prescription.Repetitions)"
+                                                  @key="@($"preview-{Store.State.SelectedWeek}-{exercise.Row}")" />
+                            </div>
+                        }
                     </article>
                 }
                 <p class="plan-hint"><Icon Name="shield" Size="16" /> Нажми «Начать тренировку», чтобы записывать подходы.</p>
@@ -117,9 +130,9 @@ else
                 {
                     var index = number;
                     var exercise = Session.Exercises[index];
-                    var expanded = ExpandedRows.Contains(exercise.Row);
+                    var expanded = ExpandedRow == exercise.Row;
                     <article id="@($"exercise-{exercise.Row}")" class="exercise-card @(exercise.Skipped ? "skipped" : "")">
-                        <button class="exercise-heading" @onclick="() => ToggleExpanded(exercise.Row)" aria-expanded="@expanded">
+                        <button class="exercise-heading" @onclick="() => ToggleExpanded(exercise.Row)" aria-expanded="@(expanded ? "true" : "false")">
                             <span class="exercise-number @(exercise.Sets.All(set => set.Done) ? "complete" : "")">
                                 @if (exercise.Sets.All(set => set.Done))
                                 {
@@ -138,10 +151,44 @@ else
                             <div class="exercise-body">
                                 @if (!string.IsNullOrWhiteSpace(exercise.BaselineLoad))
                                 {
-                                    <div class="previous-result">В таблице за эту неделю: @exercise.BaselineLoad</div>
+                                    <details class="current-sheet-result">
+                                        <summary>В таблице за эту неделю</summary>
+                                        <p>@exercise.BaselineLoad</p>
+                                    </details>
                                 }
                                 <ProgressionPanel Context="@ProgressionFor(exercise.Row, exercise.Name, exercise.Sets.Count, exercise.PlannedRepetitions)"
                                                   @key="@(Session.Id + exercise.Row)" />
+                                @if (Session.FinishedAt is null && !exercise.Skipped && exercise.Sets.Any(set => !set.Done))
+                                {
+                                    var draft = GetQuickDraft(exercise);
+                                    <section class="quick-sets" aria-label="@($"Общий ввод: {exercise.Name}")">
+                                        <strong>@(exercise.Sets.Any(set => set.Done) ? "Для оставшихся подходов" : "Для всех подходов")</strong>
+                                        <div class="quick-set-fields">
+                                            <label>
+                                                Вес, кг
+                                                <input type="text" inputmode="decimal" maxlength="7" autocomplete="off" placeholder="—"
+                                                       aria-label="@($"Общий вес: {exercise.Name}")" disabled="@Store.StorageFailed"
+                                                       @bind="draft.Weight" @bind:event="oninput" @bind:after="draft.Changed" />
+                                            </label>
+                                            <label>
+                                                Повторы
+                                                <input type="text" inputmode="numeric" maxlength="3" autocomplete="off" placeholder="—"
+                                                       aria-label="@($"Общие повторы: {exercise.Name}")" disabled="@Store.StorageFailed"
+                                                       @bind="draft.Repetitions" @bind:event="oninput" @bind:after="draft.Changed" />
+                                            </label>
+                                            <button class="button secondary" disabled="@Store.StorageFailed"
+                                                    @onclick="() => ApplyQuickDraftAsync(exercise.Row, draft)">Применить</button>
+                                        </div>
+                                        @if (draft.Saved)
+                                        {
+                                            <small class="quick-saved" role="status">Вес и повторы сохранены.</small>
+                                        }
+                                        @if (draft.Error is not null)
+                                        {
+                                            <small class="quick-error" role="alert">@draft.Error</small>
+                                        }
+                                    </section>
+                                }
                                 <div class="set-labels"><span>ПОДХОД</span><span>ВЕС, КГ</span><span>ПОВТОРЫ</span><span>ЗАПАС</span><span></span></div>
                                 @for (var setNumber = 0; setNumber < exercise.Sets.Count; setNumber++)
                                 {
@@ -171,7 +218,7 @@ else
                                     }
                                 </div>
                                 <div class="technique-check">
-                                    <label for="@($"technique-{exercise.Row}")">Техника в этой тренировке</label>
+                                    <label for="@($"technique-{exercise.Row}")">Техника</label>
                                     <select id="@($"technique-{exercise.Row}")" class="field"
                                             value="@TechniqueValue(exercise)"
                                             disabled="@(Session.FinishedAt is not null || Store.StorageFailed)"
@@ -180,7 +227,6 @@ else
                                         <option value="yes">Сохранена во всех подходах</option>
                                         <option value="no">Были нарушения</option>
                                     </select>
-                                    <small>Учитывается в следующей рекомендации. Оценка хранится на устройстве и в резервной копии.</small>
                                 </div>
                             </div>
                         }
@@ -188,7 +234,7 @@ else
                 }
                 <div class="finish-panel">
                     <div><strong>@(Session.SyncedAt is not null ? "Результаты в Google-таблице" : Session.FinishedAt is not null ? "Тренировка сохранена на устройстве" : "Каждый подход имеет значение")</strong>
-                        <p>@(Session.SyncedAt is not null ? $"Подтверждено {Session.SyncedAt.Value.ToLocalTime():d MMM, HH:mm}" : Session.FinishedAt is not null ? "Статус отправки — на странице «История»." : "Все изменения сохраняются после ввода.")</p>
+                        <p>@(Session.SyncedAt is not null ? $"Подтверждено {Session.SyncedAt.Value.ToLocalTime():d MMM, HH:mm}" : Session.FinishedAt is not null ? "Статус отправки — на странице «История»." : "Результаты сохраняются на устройстве.")</p>
                     </div>
                     @if (Session.FinishedAt is null)
                     {
