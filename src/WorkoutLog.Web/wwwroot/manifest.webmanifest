@@ -1,0 +1,19 @@
+{
+  "id": "./",
+  "name": "РИТМ — дневник тренировок",
+  "short_name": "РИТМ",
+  "description": "План тренера, запись подходов офлайн и синхронизация с Google Sheets",
+  "lang": "ru",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f5f1",
+  "theme_color": "#242521",
+  "orientation": "portrait-primary",
+  "categories": ["health", "fitness", "productivity"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

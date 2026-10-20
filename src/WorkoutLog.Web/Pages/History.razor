@@ -1,0 +1,82 @@
+@page "/history"
+@implements IDisposable
+
+<PageTitle>История · РИТМ</PageTitle>
+<section class="page-heading">
+    <div><div class="eyebrow"><span></span> РАБОТА, КОТОРАЯ ОСТАЁТСЯ</div><h1>Твой прогресс<span class="orange">.</span></h1><p>Каждая тренировка — шаг вперёд.</p></div>
+    <button class="button secondary" @onclick="Store.ExportAsync"><Icon Name="download" Size="17" /> Резервная копия</button>
+</section>
+<div class="stats-grid">
+    <div class="stat-card"><span>ТРЕНИРОВОК</span><strong>@CompletedCount.ToString("00")</strong><small>завершено на этом устройстве</small></div>
+    <div class="stat-card"><span>ПОДХОДОВ</span><strong>@Store.State.Sessions.Sum(session => session.CompletedSets)</strong><small>твой вклад в результат</small></div>
+    <div class="stat-card"><span>ОБЩИЙ ОБЪЁМ</span><strong>@Store.State.Sessions.Sum(session => session.Volume).ToString("N0")<em>кг</em></strong><small>вес × выполненные повторы</small></div>
+</div>
+@if (Store.State.Outbox.Count > 0)
+{
+    <section class="queue-card">
+        <div class="queue-heading"><div><h2>Ожидают отправки <span>@Store.State.Outbox.Count</span></h2><p>Результаты сохранены на устройстве и остаются здесь до подтверждения Google.</p></div><button class="button dark" disabled="@(Store.Syncing || !Store.Online)" @onclick="SyncAsync"><Icon Name="refresh" Size="17" /> @(Store.Syncing ? "Отправляем…" : "Повторить")</button></div>
+        @foreach (var upload in Store.State.Outbox)
+        {
+            <div class="queue-item">
+                <div><strong>@upload.DayName <span class="muted">· неделя @upload.Week</span></strong><p>@upload.Message</p></div>
+                @if (upload.Status == UploadStatus.NeedsSignIn)
+                {
+                    <a class="text-link" href="admin">Подключить Google ↗</a>
+                }
+                @if (upload.Status == UploadStatus.Conflict)
+                {
+                    <details class="conflict-details">
+                        <summary>Как разрешить конфликт</summary>
+                        <p>Открой таблицу и сравни её с результатами ниже. Если тренер переставил строки, перенеси результаты вручную в нужное упражнение. Не удаляй локальную копию до проверки.</p>
+                        <p>Если строки не менялись, можно вручную привести ячейки к значениям ниже и нажать «Проверить снова». Приложение подтвердит совпадение и уберёт запись из очереди.</p>
+                        <a class="text-link" href="@TableUrl(upload)" target="_blank" rel="noopener noreferrer">Открыть Google-таблицу ↗</a>
+                        @foreach (var cell in upload.Cells)
+                        {
+                            <div class="conflict-cell"><strong>@cell.ExerciseName · @SheetParser.ColumnName(cell.LoadColumn)@cell.Row</strong><pre>@cell.Load</pre><span>Запас: @cell.Reserve</span></div>
+                        }
+                        <button class="button secondary" @onclick="() => RetryConflictAsync(upload.Id)">Проверить снова</button>
+                    </details>
+                }
+            </div>
+        }
+    </section>
+}
+<div class="section-heading"><h2>История тренировок</h2><span class="muted small">СНАЧАЛА НОВЫЕ</span></div>
+@if (Store.State.Sessions.Count == 0)
+{
+    <div class="empty-state"><div class="empty-icon"><Icon Name="history" Size="36" /></div><h2>Первая запись впереди</h2><p>Начни тренировку — здесь появятся подходы, объём и статус отправки.</p><a class="button primary" href="">К тренировке <Icon Name="arrow" Size="18" /></a></div>
+}
+else
+{
+    @foreach (var session in Store.State.Sessions.OrderByDescending(session => session.StartedAt))
+    {
+        <details class="history-card">
+            <summary>
+                <div class="history-date"><strong>@session.StartedAt.ToLocalTime().ToString("dd")</strong><span>@session.StartedAt.ToLocalTime().ToString("MMM")</span></div>
+                <div class="history-title"><h3>@session.DayName</h3><p>Неделя @session.Week · @session.CompletedSets/@session.TotalSets подходов · @session.Volume.ToString("N0") кг</p></div>
+                <span class="badge @(session.SyncedAt is not null ? "green" : "")">@(session.SyncedAt is not null ? "В Google" : session.FinishedAt is not null ? "На устройстве" : "В процессе")</span>
+                <Icon Name="chevron" Size="18" />
+            </summary>
+            <div class="history-body">
+                @foreach (var exercise in session.Exercises)
+                {
+                    <div class="history-exercise"><strong>@exercise.Name</strong><div class="result-chips">
+                        @foreach (var set in exercise.Sets.Where(set => set.Done))
+                        {
+                            <span>@set.Weight кг × @set.Repetitions <small>запас @set.Reserve</small></span>
+                        }
+                        @if (exercise.Skipped)
+                        {
+                            <span class="muted">Остаток пропущен</span>
+                        }
+                    </div></div>
+                }
+                @if (session.FinishedAt is null && CanResume(session))
+                {
+                    <button class="button dark" @onclick="() => ResumeAsync(session)">Продолжить тренировку <Icon Name="arrow" Size="17" /></button>
+                }
+                <p class="field-help">Начало: @session.StartedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm") · @(session.SyncedAt is null ? "Подтверждения Google пока нет" : $"Google подтвердил: {session.SyncedAt.Value.ToLocalTime():dd.MM.yyyy HH:mm}")</p>
+            </div>
+        </details>
+    }
+}

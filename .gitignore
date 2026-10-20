@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+.vs/
+.vscode/
+publish/
+TestResults/
+*.user
+*.suo
+node_modules/
+*.log
+*.zip
+.env
+appsettings.Local.json

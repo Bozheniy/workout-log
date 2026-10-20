@@ -1,0 +1,87 @@
+@page "/admin"
+@implements IDisposable
+
+<PageTitle>Настройки · РИТМ</PageTitle>
+<section class="page-heading">
+    <div><div class="eyebrow"><span></span> ПОДСТРОЙ ПОД СЕБЯ</div><h1>Всё на связи<span class="orange">.</span></h1><p>Твой план, твой телефон, твои данные.</p></div>
+</section>
+<div class="settings-grid">
+    <div>
+        <section class="settings-card">
+            <div class="settings-heading"><span class="settings-icon"><Icon Name="link" /></span><div><h2>Таблица тренера</h2><p>Ссылка на лист с программой</p></div><span class="step-number">01</span></div>
+            <label for="spreadsheet-url">Ссылка Google Sheets</label>
+            <input id="spreadsheet-url" class="field" type="url" @bind="SpreadsheetUrl" placeholder="https://docs.google.com/spreadsheets/d/…/edit?gid=…" />
+            <p class="field-help">В ссылке должен быть gid нужного листа. Поддерживается формат «неделя → подходы, повторы, нагрузка, запас».</p>
+            <button class="button dark" @onclick="SaveSourceAsync" disabled="@Store.Busy"><Icon Name="refresh" Size="17" /> Сохранить и загрузить план</button>
+            @if (Store.State.Plan is not null)
+            {
+                <div class="setting-status"><span class="status-dot"></span>@Store.State.Plan.Days.Count тренировки · @Store.State.Plan.WeekCount недель · план сохранён</div>
+            }
+        </section>
+        <section class="settings-card">
+            <div class="settings-heading"><span class="settings-icon"><Icon Name="cloud" /></span><div><h2>Отправка в Google</h2><p>@(Store.SignedIn ? "Аккаунт подключён" : "Настрой подключение и войди в свой аккаунт")</p></div><span class="step-number">02</span></div>
+            <p class="body-copy">Для чтения открытого плана вход не нужен. Для отправки результатов нужен аккаунт с правами редактора таблицы.</p>
+            <label for="google-client">Google OAuth Client ID</label>
+            <input id="google-client" class="field" type="text" autocomplete="off" spellcheck="false" @bind="ClientId" placeholder="123456789-….apps.googleusercontent.com" />
+            <p class="field-help">Client ID — публичный идентификатор приложения. Client Secret сюда не нужен.</p>
+            <div class="button-row">
+                <button class="button secondary" @onclick="SaveClientAsync">Сохранить Client ID</button>
+                @if (Store.SignedIn)
+                {
+                    <button class="button secondary" @onclick="Store.SignOutAsync">Выйти из Google</button>
+                }
+                else
+                {
+                    <button class="button dark" disabled="@(!Store.LoginReady || !Store.Online)" @onclick="Store.SignInAsync">Войти в Google <Icon Name="arrow" Size="17" /></button>
+                }
+            </div>
+            <details class="setup-guide" open="@string.IsNullOrEmpty(Store.State.Settings.GoogleClientId)">
+                <summary>Как получить Client ID <Icon Name="chevron" Size="17" /></summary>
+                <ol>
+                    <li>Открой <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener noreferrer">Google Cloud Console</a> и создай проект, например «РИТМ».</li>
+                    <li>В «APIs &amp; Services → Library» включи <strong>Google Sheets API</strong>.</li>
+                    <li>В «Google Auth Platform» настрой название приложения и контактный email. Для личного аккаунта выбери External. В Audience → Test users добавь свой Google-аккаунт.</li>
+                    <li>В Data Access добавь scope <code>https://www.googleapis.com/auth/spreadsheets</code>. Google разрешает доступ ко всем таблицам аккаунта в рамках этого scope; само приложение обращается только к выбранной таблице.</li>
+                    <li>В Clients создай OAuth client типа <strong>Web application</strong>. В Authorized JavaScript origins добавь <code>https://bozheniy.github.io</code>. Путь <code>/workout-log/</code> добавлять не нужно.</li>
+                    <li>Скопируй Client ID в поле выше, сохрани и нажми «Войти в Google». Выбери аккаунт редактора таблицы и предоставь запрошенный доступ.</li>
+                </ol>
+                <p class="field-help">В режиме Testing вход доступен добавленным тестовым пользователям. Названия разделов Google Console могут меняться.</p>
+            </details>
+        </section>
+        <section class="settings-card">
+            <div class="settings-heading"><span class="settings-icon"><Icon Name="clock" /></span><div><h2>Твой темп</h2><p>Отдых между подходами</p></div><span class="step-number">03</span></div>
+            <label for="rest-seconds">Автоматический таймер</label>
+            <select id="rest-seconds" class="field" @bind="RestSeconds" @bind:after="SaveRestAsync">
+                <option value="60">1 минута</option>
+                <option value="90">1 минута 30 секунд</option>
+                <option value="120">2 минуты</option>
+                <option value="180">3 минуты</option>
+            </select>
+            <p class="field-help">Таймер запускается после отметки выполненного подхода.</p>
+        </section>
+    </div>
+    <aside>
+        <section class="settings-card install-card">
+            <div class="mini-brand">ритм<span>.</span></div>
+            <h2>Твой зал.<br />Твоё приложение.</h2>
+            <p>Добавь РИТМ на главный экран телефона. План будет рядом даже без сети.</p>
+            <button class="button primary" @onclick="InstallAsync"><Icon Name="download" Size="18" /> Установить приложение</button>
+            @if (InstallHint is not null)
+            {
+                <p class="install-hint" role="status">@InstallHint</p>
+            }
+            <div class="install-check"><Icon Name="@(Store.OfflineReady ? "check" : "clock")" Size="18" /> @(Store.OfflineReady ? "Приложение загружено для офлайн" : "Офлайн-кэш ещё загружается")</div>
+        </section>
+        <section class="settings-card">
+            <div class="card-label">СОХРАННОСТЬ ДАННЫХ <Icon Name="shield" Size="20" /></div>
+            <h3>Тренируйся спокойно</h3>
+            <p class="body-copy">Результаты хранятся в этом браузере. При очистке данных сайта или удалении приложения локальные записи могут исчезнуть.</p>
+            <button class="button secondary full-width" @onclick="Store.RequestPersistenceAsync">@(Store.PersistentStorage ? "Постоянное хранение включено" : "Защитить локальное хранение")</button>
+            <button class="button secondary full-width" @onclick="Store.ExportAsync"><Icon Name="download" Size="17" /> Скачать резервную копию</button>
+            <label class="import-label" for="backup-file">Восстановить из JSON</label>
+            <InputFile id="backup-file" OnChange="ImportAsync" accept=".json,application/json" />
+            <p class="field-help">Восстановление добавляет отсутствующие тренировки. Существующие записи сохраняются.</p>
+        </section>
+        <div class="quiet-note"><Icon Name="cloud" Size="22" /><p>После возвращения связи очередь отправляется при открытом приложении. Если срок входа в Google истёк, приложение попросит войти снова. В закрытом приложении отправка не гарантируется.</p></div>
+    </aside>
+</div>

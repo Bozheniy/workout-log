@@ -1,0 +1,66 @@
+﻿@inherits LayoutComponentBase
+
+@implements IDisposable
+
+<div class="app-shell">
+    <aside class="sidebar">
+        <a href="" class="brand" aria-label="РИТМ — на главную">
+            <span class="brand-mark"><i></i><i></i><i></i></span>
+            <span>ритм<span class="brand-dot">.</span></span>
+        </a>
+        <div class="brand-caption">ТВОЙ ДНЕВНИК СИЛЫ</div>
+        <nav class="desktop-nav" aria-label="Основная навигация">
+            <NavLink href="" Match="NavLinkMatch.All"><Icon Name="grid" /> Тренировка <span class="nav-arrow">↗</span></NavLink>
+            <NavLink href="history"><Icon Name="history" /> История</NavLink>
+            <NavLink href="admin"><Icon Name="settings" /> Настройки</NavLink>
+        </nav>
+        <div class="sidebar-bottom">
+            <div class="tiny-label">МАЛЕНЬКИЕ ШАГИ.</div>
+            <p>Большой<br />результат.</p>
+            <span class="sidebar-line"></span>
+            <div class="device-status"><span class="status-dot @(Store.Online ? "" : "amber")"></span>@(Store.Online ? "Есть подключение" : "Без интернета")</div>
+            <span class="muted small">Результаты всегда под рукой</span>
+        </div>
+    </aside>
+    <div class="main-shell">
+        <header class="topbar">
+            <a class="brand mobile-brand" href="">ритм<span class="brand-dot">.</span></a>
+            <div class="breadcrumb">ЛИЧНЫЙ ДНЕВНИК <span>/</span> ТРЕНИРОВКИ</div>
+            <div class="topbar-right">
+                <span class="today-date">@TodayLabel</span>
+                <a class="sync-pill" href="history">
+                    <span class="status-dot @(Store.State.Outbox.Count > 0 || !Store.Online ? "amber" : "")"></span>
+                    @(Store.Syncing ? "Отправляем…" : Store.State.Outbox.Count > 0 ? $"В очереди: {Store.State.Outbox.Count}" : "На устройстве")
+                </a>
+                <div class="avatar" aria-label="Личный дневник">Я</div>
+            </div>
+        </header>
+        <main class="page-content">
+            @if (!Store.Online)
+            {
+                <div class="connection-banner"><Icon Name="wifi" Size="18" /><span>Вы офлайн. Записывайте подходы — результаты сохраняются на устройстве.</span></div>
+            }
+            @if (Store.Error is not null)
+            {
+                <div class="message error" role="alert">
+                    <span>@Store.Error</span>
+                    <button class="icon-button" aria-label="Скрыть сообщение" @onclick="Store.DismissMessage"><Icon Name="close" Size="18" /></button>
+                </div>
+            }
+            else if (Store.Notice is not null)
+            {
+                <div class="message notice" role="status">
+                    <span>@Store.Notice</span>
+                    <button class="icon-button" aria-label="Скрыть сообщение" @onclick="Store.DismissMessage"><Icon Name="close" Size="18" /></button>
+                </div>
+            }
+            @Body
+        </main>
+        <footer class="page-footer"><span>ТВОЙ ТЕМП. ТВОЙ ПРОГРЕСС.</span><span>ритм © @DateTime.Now.Year</span></footer>
+    </div>
+    <nav class="mobile-nav" aria-label="Навигация телефона">
+        <NavLink href="" Match="NavLinkMatch.All"><Icon Name="grid" Size="21" /><span>Тренировка</span></NavLink>
+        <NavLink href="history"><Icon Name="history" Size="21" /><span>История</span></NavLink>
+        <NavLink href="admin"><Icon Name="settings" Size="21" /><span>Настройки</span></NavLink>
+    </nav>
+</div>

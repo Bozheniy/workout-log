@@ -1,0 +1,134 @@
+namespace WorkoutLog.Core;
+
+// Эти классы описывают данные. Они не зависят от браузера, Blazor и Google.
+public sealed class AppSettings
+{
+    public string SpreadsheetUrl { get; set; } = "";
+    public string GoogleClientId { get; set; } = "";
+    public int RestSeconds { get; set; } = 120;
+}
+
+public sealed class LocalState
+{
+    public int SchemaVersion { get; set; } = 1;
+    public int Revision { get; set; }
+    public AppSettings Settings { get; set; } = new();
+    public WorkoutPlan? Plan { get; set; }
+    public int SelectedWeek { get; set; } = 1;
+    public int SelectedDay { get; set; }
+    public List<WorkoutSession> Sessions { get; set; } = [];
+    public List<PendingUpload> Outbox { get; set; } = [];
+}
+
+public sealed class WorkoutPlan
+{
+    public string SpreadsheetId { get; set; } = "";
+    public int SheetId { get; set; }
+    public DateTimeOffset DownloadedAt { get; set; } = DateTimeOffset.UtcNow;
+    public List<string> CoachNotes { get; set; } = [];
+    public List<TrainingDay> Days { get; set; } = [];
+    public int WeekCount => Days.SelectMany(day => day.Exercises)
+        .SelectMany(exercise => exercise.Weeks).Select(week => week.Number).DefaultIfEmpty(1).Max();
+}
+
+public sealed class TrainingDay
+{
+    public int HeaderRow { get; set; }
+    public string Name { get; set; } = "";
+    public List<PlannedExercise> Exercises { get; set; } = [];
+}
+
+public sealed class PlannedExercise
+{
+    public int Row { get; set; }
+    public string Name { get; set; } = "";
+    public List<WeekPrescription> Weeks { get; set; } = [];
+}
+
+public sealed class WeekPrescription
+{
+    public int Number { get; set; }
+    public int Sets { get; set; }
+    public string Repetitions { get; set; } = "";
+    // Номер столбца Google начинается с 1: A = 1, B = 2.
+    public int LoadColumn { get; set; }
+    public string ExistingLoad { get; set; } = "";
+    public string ExistingReserve { get; set; } = "";
+}
+
+public sealed class WorkoutSession
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string SpreadsheetId { get; set; } = "";
+    public int SheetId { get; set; }
+    public int DayRow { get; set; }
+    public string DayName { get; set; } = "";
+    public int Week { get; set; }
+    public DateTimeOffset StartedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? FinishedAt { get; set; }
+    public DateTimeOffset? SyncedAt { get; set; }
+    public List<ExerciseResult> Exercises { get; set; } = [];
+    public int CompletedSets => Exercises.Sum(exercise => exercise.Sets.Count(set => set.Done));
+    public int TotalSets => Exercises.Sum(exercise => exercise.Sets.Count);
+    public decimal Volume => Exercises.Sum(exercise => exercise.Sets
+        .Where(set => set.Done).Sum(set => (set.Weight ?? 0) * (set.Repetitions ?? 0)));
+}
+
+public sealed class ExerciseResult
+{
+    public int Row { get; set; }
+    public string Name { get; set; } = "";
+    public int LoadColumn { get; set; }
+    public string PlannedRepetitions { get; set; } = "";
+    public string BaselineLoad { get; set; } = "";
+    public string BaselineReserve { get; set; } = "";
+    public bool Skipped { get; set; }
+    public List<SetResult> Sets { get; set; } = [];
+}
+
+public sealed class SetResult
+{
+    // Сохраняем ввод как текст, чтобы промежуточное «60,» не превращалось в «60».
+    public string WeightInput { get; set; } = "";
+    public decimal? Weight { get; set; }
+    public int? Repetitions { get; set; }
+    public int? Reserve { get; set; }
+    public bool Done { get; set; }
+}
+
+public enum UploadStatus
+{
+    Pending,
+    NeedsSignIn,
+    Conflict,
+    PermissionDenied
+}
+
+public sealed class PendingUpload
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string SessionId { get; set; } = "";
+    public string SpreadsheetId { get; set; } = "";
+    public int SheetId { get; set; }
+    public int Week { get; set; }
+    public int DayRow { get; set; }
+    public string DayName { get; set; } = "";
+    public UploadStatus Status { get; set; }
+    public int Attempts { get; set; }
+    public DateTimeOffset RetryAfter { get; set; }
+    public string Message { get; set; } = "";
+    public List<CellUpdate> Cells { get; set; } = [];
+}
+
+public sealed class CellUpdate
+{
+    public int Row { get; set; }
+    public int LoadColumn { get; set; }
+    public string ExerciseName { get; set; } = "";
+    public int PlannedSets { get; set; }
+    public string PlannedRepetitions { get; set; } = "";
+    public string ExpectedLoad { get; set; } = "";
+    public string ExpectedReserve { get; set; } = "";
+    public string Load { get; set; } = "";
+    public string Reserve { get; set; } = "";
+}

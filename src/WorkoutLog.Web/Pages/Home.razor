@@ -1,0 +1,225 @@
+@page "/"
+@implements IDisposable
+
+<PageTitle>Тренировка · РИТМ</PageTitle>
+<section class="page-heading">
+    <div>
+        <div class="eyebrow"><span></span> ПОЯВЛЯЙСЯ. ДЕЛАЙ. РАСТИ.</div>
+        <h1>Твой ритм<span class="orange">.</span></h1>
+        <p>План от тренера. Прогресс — твой.</p>
+    </div>
+    <button class="button secondary refresh-button" disabled="@(Store.Busy || !Store.Online)" @onclick="Store.RefreshPlanAsync">
+        <Icon Name="refresh" Size="17" /> @(Store.Busy ? "Загружаем…" : "Обновить план")
+    </button>
+</section>
+@if (!Store.Ready || (Plan is null && Store.Busy))
+{
+    <div class="loading-card"><span class="loader"></span><h2>Загружаем твой план</h2><p>Сохраним его для тренировок без интернета.</p></div>
+}
+else if (Plan is null)
+{
+    <div class="empty-state">
+        <div class="empty-icon"><Icon Name="book" Size="34" /></div>
+        <h2>Начнём с плана</h2>
+        <p>Подключи таблицу тренера в настройках. При первом открытии понадобится интернет.</p>
+        <a class="button primary" href="admin">Подключить таблицу <Icon Name="arrow" Size="18" /></a>
+    </div>
+}
+else
+{
+    <section class="program-selector" aria-label="Выбор недели">
+        <div class="section-label">ПРОГРАММА <span>@Plan.WeekCount НЕДЕЛЬ</span></div>
+        <div class="week-tabs">
+            @for (var number = 1; number <= Plan.WeekCount; number++)
+            {
+                var week = number;
+                <button class="week-tab @(Store.State.SelectedWeek == week ? "selected" : "")"
+                        aria-pressed="@(Store.State.SelectedWeek == week)" @onclick="() => SelectWeekAsync(week)">
+                    <span>НЕДЕЛЯ</span><strong>@week.ToString("00")</strong>
+                </button>
+            }
+        </div>
+    </section>
+    <section class="day-tabs" aria-label="Выбор тренировки">
+        @for (var number = 0; number < Plan.Days.Count; number++)
+        {
+            var index = number;
+            var day = Plan.Days[index];
+            <button class="day-tab @(Store.State.SelectedDay == index ? "selected" : "")"
+                    aria-pressed="@(Store.State.SelectedDay == index)" @onclick="() => SelectDayAsync(index)">
+                <span class="day-number">@((index + 1).ToString("00"))</span>
+                <span class="day-label"><small>ТРЕНИРОВКА @(index + 1)</small><strong>@day.Name</strong></span>
+                @if (IsDayCompleted(day))
+                {
+                    <Icon Name="check" Size="16" />
+                }
+            </button>
+        }
+    </section>
+    <section class="overview-grid">
+        <div class="workout-hero">
+            <div class="hero-decoration" aria-hidden="true"><span></span><span></span><span></span></div>
+            <div class="hero-top"><span class="hero-tag">СИЛОВАЯ ТРЕНИРОВКА</span><span class="hero-week">НЕДЕЛЯ @Store.State.SelectedWeek / @Plan.WeekCount</span></div>
+            <h2>@CurrentDay!.Name</h2>
+            <div class="hero-meta"><span><Icon Name="dumbbell" Size="18" /> @ExerciseCount упражнений</span><span class="separator">/</span><span>@TotalSets подходов</span></div>
+            @if (Session is null)
+            {
+                <button class="button primary" @onclick="StartAsync" disabled="@Store.StorageFailed">Начать тренировку <Icon Name="arrow" Size="19" /></button>
+            }
+            else if (Session.FinishedAt is null)
+            {
+                <div class="hero-active"><span class="status-dot"></span> Тренировка идёт <span class="hero-active-time">начало в @Session.StartedAt.ToLocalTime().ToString("HH:mm")</span></div>
+            }
+            else
+            {
+                <div class="hero-active"><Icon Name="check" Size="20" /> Тренировка завершена</div>
+            }
+        </div>
+        <div class="overview-aside">
+            <div class="progress-card">
+                <div class="card-label">ТВОЙ ПРОГРЕСС <Icon Name="dumbbell" Size="19" /></div>
+                <div class="progress-numbers"><strong>@(Session?.CompletedSets ?? 0)</strong><span>/ @TotalSets</span></div>
+                <div class="progress-caption">рабочих подходов выполнено</div>
+                <div class="progress-track" role="progressbar" aria-label="Выполненные подходы" aria-valuenow="@(Session?.CompletedSets ?? 0)" aria-valuemin="0" aria-valuemax="@TotalSets"><span style="width: @ProgressPercent%"></span></div>
+            </div>
+            <div class="offline-card">
+                <div class="offline-icon"><Icon Name="@(Store.OfflineReady ? "shield" : "download")" Size="21" /></div>
+                <div><strong>@(Store.OfflineReady ? "Готово к тренировке офлайн" : "План сохранён на устройстве")</strong><p>@(Store.OfflineReady ? "План и приложение доступны без сети." : "Для запуска без сети дождись загрузки PWA.")</p></div>
+            </div>
+        </div>
+    </section>
+    <div class="training-content">
+        <section class="exercise-list">
+            <div class="section-heading"><h2>Программа на сегодня <span>@ExerciseCount.ToString("00")</span></h2><span class="muted small">ТОЛЬКО РАБОЧИЕ ПОДХОДЫ</span></div>
+            @if (Session is null)
+            {
+                @foreach (var (exercise, index) in PlannedExercises.Select((value, index) => (value, index)))
+                {
+                    var prescription = exercise.Weeks.Single(week => week.Number == Store.State.SelectedWeek);
+                    <article class="exercise-preview">
+                        <span class="exercise-number">@((index + 1).ToString("00"))</span>
+                        <div><h3>@exercise.Name</h3><p>@prescription.Sets подхода <span>×</span> @prescription.Repetitions повторений</p>
+                            @if (!string.IsNullOrWhiteSpace(prescription.ExistingLoad))
+                            {
+                                <small class="previous-result">В таблице: @prescription.ExistingLoad</small>
+                            }
+                        </div>
+                        <span class="exercise-symbol"><Icon Name="dumbbell" Size="23" /></span>
+                    </article>
+                }
+                <p class="plan-hint"><Icon Name="shield" Size="16" /> Нажми «Начать тренировку», чтобы записывать подходы.</p>
+            }
+            else
+            {
+                @for (var number = 0; number < Session.Exercises.Count; number++)
+                {
+                    var index = number;
+                    var exercise = Session.Exercises[index];
+                    var expanded = ExpandedRows.Contains(exercise.Row);
+                    <article id="@($"exercise-{exercise.Row}")" class="exercise-card @(exercise.Skipped ? "skipped" : "")">
+                        <button class="exercise-heading" @onclick="() => ToggleExpanded(exercise.Row)" aria-expanded="@expanded">
+                            <span class="exercise-number @(exercise.Sets.All(set => set.Done) ? "complete" : "")">
+                                @if (exercise.Sets.All(set => set.Done))
+                                {
+                                    <Icon Name="check" Size="18" />
+                                }
+                                else
+                                {
+                                    @((index + 1).ToString("00"))
+                                }
+                            </span>
+                            <span class="exercise-title"><strong>@exercise.Name</strong><small>@exercise.Sets.Count подхода × @exercise.PlannedRepetitions повторений <span>· @(exercise.Skipped ? "Пропущено" : $"{exercise.Sets.Count(set => set.Done)}/{exercise.Sets.Count} выполнено")</span></small></span>
+                            <span class="chevron @(expanded ? "open" : "")"><Icon Name="chevron" Size="18" /></span>
+                        </button>
+                        @if (expanded)
+                        {
+                            <div class="exercise-body">
+                                @if (!string.IsNullOrWhiteSpace(exercise.BaselineLoad))
+                                {
+                                    <div class="previous-result">В таблице: @exercise.BaselineLoad</div>
+                                }
+                                <div class="set-labels"><span>ПОДХОД</span><span>ВЕС, КГ</span><span>ПОВТОРЫ</span><span>ЗАПАС</span><span></span></div>
+                                @for (var setNumber = 0; setNumber < exercise.Sets.Count; setNumber++)
+                                {
+                                    var setIndex = setNumber;
+                                    var set = exercise.Sets[setIndex];
+                                    var locked = set.Done || exercise.Skipped || Session.FinishedAt is not null || Store.StorageFailed;
+                                    <div class="set-row @(set.Done ? "done" : "")" @key="@(Session.Id + exercise.Row + "-" + setIndex)">
+                                        <span class="set-number">@((setIndex + 1).ToString("00"))</span>
+                                        <input type="text" inputmode="decimal" maxlength="7" autocomplete="off" placeholder="—"
+                                               aria-label="@($"{exercise.Name}, подход {setIndex + 1}, вес в кг")" disabled="@locked"
+                                               value="@(set.Done || string.IsNullOrEmpty(set.WeightInput) ? FormatWeight(set.Weight) : set.WeightInput)" @oninput='args => UpdateSetAsync(exercise.Row, setIndex, "weight", args)' />
+                                        <input type="text" inputmode="numeric" maxlength="3" autocomplete="off" placeholder="—"
+                                               aria-label="@($"{exercise.Name}, подход {setIndex + 1}, повторы")" disabled="@locked"
+                                               value="@set.Repetitions" @oninput='args => UpdateSetAsync(exercise.Row, setIndex, "reps", args)' />
+                                        <input type="text" inputmode="numeric" maxlength="2" autocomplete="off" placeholder="—"
+                                               aria-label="@($"{exercise.Name}, подход {setIndex + 1}, запас повторений")" disabled="@locked"
+                                               value="@set.Reserve" @oninput='args => UpdateSetAsync(exercise.Row, setIndex, "reserve", args)' />
+                                        <button class="set-check" disabled="@(exercise.Skipped || Session.FinishedAt is not null || Store.StorageFailed)"
+                                                aria-label="@(set.Done ? $"Изменить подход {setIndex + 1}: {exercise.Name}" : $"Выполнить подход {setIndex + 1}: {exercise.Name}")"
+                                                aria-pressed="@set.Done" @onclick="() => ToggleSetAsync(exercise.Row, setIndex)"><Icon Name="check" Size="20" /></button>
+                                    </div>
+                                }
+                                <div class="exercise-bottom"><span>Запас — сколько повторений ещё мог бы сделать.</span>
+                                    @if (Session.FinishedAt is null)
+                                    {
+                                        <button class="text-button" @onclick="() => SkipAsync(exercise.Row)">@(exercise.Skipped ? "Вернуть" : "Пропустить остаток")</button>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </article>
+                }
+                <div class="finish-panel">
+                    <div><strong>@(Session.SyncedAt is not null ? "Результаты в Google-таблице" : Session.FinishedAt is not null ? "Тренировка сохранена на устройстве" : "Каждый подход имеет значение")</strong>
+                        <p>@(Session.SyncedAt is not null ? $"Подтверждено {Session.SyncedAt.Value.ToLocalTime():d MMM, HH:mm}" : Session.FinishedAt is not null ? "Статус отправки — на странице «История»." : "Все изменения сохраняются после ввода.")</p>
+                    </div>
+                    @if (Session.FinishedAt is null)
+                    {
+                        <button class="button dark" @onclick="FinishAsync">Завершить <Icon Name="check" Size="18" /></button>
+                    }
+                    else
+                    {
+                        <a class="button secondary" href="history">К результатам <Icon Name="arrow" Size="17" /></a>
+                    }
+                </div>
+            }
+        </section>
+        <aside class="training-aside">
+            <section class="rest-card">
+                <div class="card-label">ПАУЗА — ЧАСТЬ РАБОТЫ <Icon Name="clock" Size="19" /></div>
+                <div class="rest-time" id="rest-countdown" data-rest-countdown>0:00</div>
+                <p>Таймер отдыха</p>
+                <div class="timer-presets">
+                    <button @onclick="() => StartTimerAsync(60)">1 мин</button>
+                    <button @onclick="() => StartTimerAsync(120)">2 мин</button>
+                    <button @onclick="() => StartTimerAsync(180)">3 мин</button>
+                </div>
+                <button class="text-button" @onclick="StopTimerAsync">Сбросить</button>
+                <small>Запускается после выполненного подхода</small>
+            </section>
+            <section class="coach-card">
+                <div class="card-label">ОТ ТРЕНЕРА <Icon Name="book" Size="19" /></div>
+                <h3>Сначала техника.<br />Потом килограммы.</h3>
+                <p>@Plan.CoachNotes.FirstOrDefault()</p>
+                <details><summary>Все рекомендации <Icon Name="chevron" Size="16" /></summary>
+                    <div class="coach-notes">
+                        @foreach (var note in Plan.CoachNotes.Skip(1))
+                        {
+                            <p>@note</p>
+                        }
+                    </div>
+                </details>
+            </section>
+            <div class="plan-updated"><Icon Name="refresh" Size="14" /> План от @Plan.DownloadedAt.ToLocalTime().ToString("dd.MM · HH:mm")</div>
+        </aside>
+    </div>
+    @if (Session is not null && Session.FinishedAt is null)
+    {
+        <div class="mobile-rest-bar">
+            <Icon Name="clock" Size="17" />
+            <span>Отдых <strong data-rest-countdown>0:00</strong></span>
+            <button aria-label="Сбросить отдых" @onclick="StopTimerAsync"><Icon Name="close" Size="15" /></button>
+        </div>
+    }
+}
