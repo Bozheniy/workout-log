@@ -120,6 +120,7 @@
     window.workout = {
         initialize(reference) {
             callback = reference;
+            window.ritmUpdates?.connect(reference);
             window.addEventListener("online", notifyConnection);
             window.addEventListener("offline", notifyConnection);
             document.addEventListener("visibilitychange", onVisibility);
@@ -129,6 +130,7 @@
             return navigator.onLine;
         },
         dispose() {
+            window.ritmUpdates?.disconnect();
             clearInterval(interval);
             clearInterval(restInterval);
             window.removeEventListener("online", notifyConnection);
@@ -190,6 +192,7 @@
             }
         },
         pwa: {
+            checkUpdate: () => window.ritmUpdates?.check() ?? false,
             async ready() {
                 if (!("serviceWorker" in navigator) || !("caches" in window)) {
                     return false;

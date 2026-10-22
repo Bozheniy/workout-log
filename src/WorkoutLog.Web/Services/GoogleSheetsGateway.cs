@@ -56,9 +56,9 @@ public sealed class GoogleSheetsGateway(HttpClient http, IJSRuntime javascript)
         var quotedTitle = "'" + snapshot.Title.Replace("'", "''") + "'";
         var values = upload.Cells.Select(cell => new
         {
-            range = $"{quotedTitle}!{SheetParser.ColumnName(cell.LoadColumn)}{cell.Row}:" +
-                $"{SheetParser.ColumnName(cell.LoadColumn + 1)}{cell.Row}",
-            values = new[] { new[] { cell.Load, cell.Reserve } }
+            range = $"{quotedTitle}!{SheetParser.ColumnName(cell.LoadColumn)}{cell.Row}" +
+                (cell.WritesReserve ? $":{SheetParser.ColumnName(cell.LoadColumn + 1)}{cell.Row}" : ""),
+            values = new[] { cell.WritesReserve ? new[] { cell.Load, cell.Reserve } : new[] { cell.Load } }
         });
 
         using var request = await CreateRequestAsync(HttpMethod.Post,

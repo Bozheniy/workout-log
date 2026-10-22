@@ -83,6 +83,29 @@ public sealed class GoogleGatewayTests
         Assert.Equal(0, handler.Writes);
     }
 
+    [Theory]
+    [InlineData("2 / 1")]
+    [InlineData("=SUM(A1:A2)")]
+    public async Task Empty_reserve_never_writes_clears_or_conflicts_with_google_reserve(string existingReserve)
+    {
+        var handler = new SheetHandler { LoseFirstWriteResponse = true };
+        handler.Rows[4][4] = existingReserve;
+        var plan = PlanAndQueueTests.Plan();
+        var session = WorkoutRules.Start(plan, plan.Days[0], 1);
+        WorkoutRules.FillRemainingSets(session, 5, "60", "10");
+        var upload = WorkoutRules.Complete(session);
+        Assert.False(upload.Cells[0].WritesReserve);
+        var gateway = CreateGateway(handler);
+        await Assert.ThrowsAsync<HttpRequestException>(() => gateway.UploadAsync(upload));
+        await gateway.UploadAsync(upload);
+
+        Assert.Equal(1, handler.Writes);
+        var data = handler.LastBody!.RootElement.GetProperty("data")[0];
+        Assert.Equal("'План ''силовой'''!D5", data.GetProperty("range").GetString());
+        Assert.Equal(1, data.GetProperty("values")[0].GetArrayLength());
+        Assert.Equal(existingReserve, handler.Rows[4][4]);
+    }
+
     private static GoogleSheetsGateway CreateGateway(SheetHandler handler)
     {
         return new GoogleSheetsGateway(new HttpClient(handler), new FakeJavascript("test-token"));
@@ -126,7 +149,10 @@ public sealed class GoogleGatewayTests
                 LastBody = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
                 var values = LastBody.RootElement.GetProperty("data")[0].GetProperty("values")[0];
                 Rows[4][3] = values[0].GetString()!;
-                Rows[4][4] = values[1].GetString()!;
+                if (values.GetArrayLength() > 1)
+                {
+                    Rows[4][4] = values[1].GetString()!;
+                }
                 if (LoseFirstWriteResponse && Writes == 1)
                 {
                     throw new HttpRequestException("Connection lost after server commit.");

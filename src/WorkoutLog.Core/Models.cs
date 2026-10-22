@@ -6,6 +6,7 @@ public sealed class AppSettings
     public string SpreadsheetUrl { get; set; } = "";
     public string GoogleClientId { get; set; } = "";
     public int RestSeconds { get; set; } = 120;
+    public bool TimerEnabled { get; set; } = true;
 }
 
 public sealed class LocalState
@@ -69,6 +70,8 @@ public sealed class WorkoutSession
     public DateTimeOffset StartedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? FinishedAt { get; set; }
     public DateTimeOffset? SyncedAt { get; set; }
+    // Старые незавершённые записи открываются как сохранённые черновики.
+    public bool IsPaused { get; set; } = true;
     public List<ExerciseResult> Exercises { get; set; } = [];
     public int CompletedSets => Exercises.Sum(exercise => exercise.Sets.Count(set => set.Done));
     public int TotalSets => Exercises.Sum(exercise => exercise.Sets.Count);
@@ -85,6 +88,8 @@ public sealed class ExerciseResult
     public string BaselineLoad { get; set; } = "";
     public string BaselineReserve { get; set; } = "";
     public bool Skipped { get; set; }
+    public string QuickWeightInput { get; set; } = "";
+    public string QuickRepetitionsInput { get; set; } = "";
     // null означает, что пользователь ещё не оценивал технику.
     public bool? TechniqueMaintained { get; set; }
     public List<SetResult> Sets { get; set; } = [];
@@ -97,6 +102,7 @@ public sealed class SetResult
     public decimal? Weight { get; set; }
     public int? Repetitions { get; set; }
     public int? Reserve { get; set; }
+    public string ReserveInput { get; set; } = "";
     public bool Done { get; set; }
 }
 
@@ -135,4 +141,6 @@ public sealed class CellUpdate
     public string ExpectedReserve { get; set; } = "";
     public string Load { get; set; } = "";
     public string Reserve { get; set; } = "";
+    // Пустой запас означает: ячейку Google вообще не трогаем.
+    public bool WritesReserve => !string.IsNullOrWhiteSpace(Reserve);
 }

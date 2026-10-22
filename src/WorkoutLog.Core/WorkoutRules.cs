@@ -12,7 +12,8 @@ public static class WorkoutRules
             SheetId = plan.SheetId,
             DayRow = day.HeaderRow,
             DayName = day.Name,
-            Week = week
+            Week = week,
+            IsPaused = false
         };
 
         foreach (var exercise in day.Exercises)
@@ -40,7 +41,22 @@ public static class WorkoutRules
     {
         return set.Weight is >= 0 and <= 2000
             && set.Repetitions is >= 1 and <= 500
-            && set.Reserve is >= 0 and <= 20;
+            && IsReserveValid(set);
+    }
+
+    public static bool IsReserveValid(SetResult set)
+    {
+        return set.Reserve is >= 0 and <= 20
+            || (set.Reserve is null && string.IsNullOrWhiteSpace(set.ReserveInput));
+    }
+
+    public static string FormatReserves(IEnumerable<SetResult> sets)
+    {
+        var completed = sets.ToList();
+        // Прочерк сохраняет номер подхода, если заполнен запас только части подходов.
+        return completed.Any(set => set.Reserve.HasValue)
+            ? string.Join(" / ", completed.Select(set => set.Reserve?.ToString(CultureInfo.InvariantCulture) ?? "—"))
+            : "";
     }
 
     public static void FillRemainingSets(WorkoutSession session, int exerciseRow, string weightInput, string repetitionsInput)
@@ -48,6 +64,10 @@ public static class WorkoutRules
         if (session.FinishedAt is not null)
         {
             throw new InvalidOperationException("Завершённая тренировка доступна для просмотра.");
+        }
+        if (session.IsPaused)
+        {
+            throw new InvalidOperationException("Сначала продолжите тренировку.");
         }
         var exercise = session.Exercises.Single(item => item.Row == exerciseRow);
         if (exercise.Skipped)
@@ -68,32 +88,54 @@ public static class WorkoutRules
         {
             throw new InvalidOperationException("Все подходы уже выполнены.");
         }
-        // Проверяем всё до изменения. Запас и отметки выполнения остаются фактическими.
+        if (remaining.Any(set => !IsReserveValid(set)))
+        {
+            throw new InvalidOperationException("Запас можно оставить пустым или указать число от 0 до 20.");
+        }
+        // «Применить» подтверждает все оставшиеся подходы одним сохранением.
         foreach (var set in remaining)
         {
             set.Weight = weight;
             set.WeightInput = weightInput.Trim();
             set.Repetitions = repetitions;
+            set.Done = true;
         }
+        exercise.QuickWeightInput = weightInput.Trim();
+        exercise.QuickRepetitionsInput = repetitionsInput.Trim();
+    }
+
+    public static string? CompletionProblem(WorkoutSession session)
+    {
+        if (session.FinishedAt is not null)
+        {
+            return "Тренировка уже завершена.";
+        }
+        if (session.IsPaused)
+        {
+            return "Сначала продолжите тренировку.";
+        }
+        if (session.CompletedSets == 0)
+        {
+            return "Пока нет выполненных подходов. Нажмите «Применить» в упражнении или отметьте подход галочкой.";
+        }
+        var unfinished = session.Exercises.Where(exercise => !exercise.Skipped && exercise.Sets.Any(set => !set.Done)).ToList();
+        if (unfinished.Count > 0)
+        {
+            return $"Остались незавершённые упражнения: {unfinished.Count}. Выполните их или пропустите остаток.";
+        }
+        if (session.Exercises.SelectMany(exercise => exercise.Sets).Any(set => set.Done && !IsValid(set)))
+        {
+            return "Проверьте вес и повторы выполненных подходов. Запас — от 0 до 20 или пустое поле.";
+        }
+        return null;
     }
 
     public static PendingUpload Complete(WorkoutSession session)
     {
-        if (session.FinishedAt is not null)
+        var problem = CompletionProblem(session);
+        if (problem is not null)
         {
-            throw new InvalidOperationException("Тренировка уже завершена.");
-        }
-        if (session.CompletedSets == 0)
-        {
-            throw new InvalidOperationException("Сначала запишите хотя бы один подход.");
-        }
-        if (session.Exercises.Any(exercise => !exercise.Skipped && exercise.Sets.Any(set => !set.Done)))
-        {
-            throw new InvalidOperationException("Отметьте оставшиеся подходы или пропустите упражнение.");
-        }
-        if (session.Exercises.SelectMany(exercise => exercise.Sets).Any(set => set.Done && !IsValid(set)))
-        {
-            throw new InvalidOperationException("Проверьте вес, повторы и запас выполненных подходов.");
+            throw new InvalidOperationException(problem);
         }
 
         var upload = new PendingUpload
@@ -126,7 +168,7 @@ public static class WorkoutRules
                 ExpectedReserve = exercise.BaselineReserve,
                 Load = string.Join("\n", completed.Select(set =>
                     $"{set.Weight!.Value.ToString("0.##", CultureInfo.InvariantCulture)} кг × {set.Repetitions}")),
-                Reserve = string.Join(" / ", completed.Select(set => set.Reserve))
+                Reserve = FormatReserves(completed)
             });
         }
         session.FinishedAt = DateTimeOffset.UtcNow;
@@ -168,9 +210,11 @@ public static class UploadReconciliation
                 return ReconciliationResult.Conflict;
             }
 
-            var applied = week.ExistingLoad == cell.Load && week.ExistingReserve == cell.Reserve;
-            var unchanged = week.ExistingLoad == cell.ExpectedLoad && week.ExistingReserve == cell.ExpectedReserve;
-            if (week.ExistingLoad.StartsWith('=') || week.ExistingReserve.StartsWith('='))
+            var applied = week.ExistingLoad == cell.Load
+                && (!cell.WritesReserve || week.ExistingReserve == cell.Reserve);
+            var unchanged = week.ExistingLoad == cell.ExpectedLoad
+                && (!cell.WritesReserve || week.ExistingReserve == cell.ExpectedReserve);
+            if (week.ExistingLoad.StartsWith('=') || (cell.WritesReserve && week.ExistingReserve.StartsWith('=')))
             {
                 return ReconciliationResult.Conflict;
             }

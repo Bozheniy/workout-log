@@ -13,10 +13,16 @@ public partial class Home
 
     private int? ExpandedRow { get; set; }
     private bool scrollToExpandedExercise;
-    private Dictionary<string, QuickSetDraft> QuickDrafts { get; } = [];
+    private string? FinishError { get; set; }
+    private bool Finishing { get; set; }
+    private int? ErrorRow { get; set; }
+    private string? ExerciseError { get; set; }
     private WorkoutPlan? Plan => Store.State.Plan;
     private TrainingDay? CurrentDay => Plan?.Days[Store.State.SelectedDay];
     private WorkoutSession? Session => Store.CurrentSession;
+    private bool IsActive => Session is { FinishedAt: null, IsPaused: false };
+    private bool ShowTimer => IsActive && Store.State.Settings.TimerEnabled;
+    private string? FinishProblem => Session is null ? null : WorkoutRules.CompletionProblem(Session);
     private List<PlannedExercise> PlannedExercises => CurrentDay?.Exercises
         .Where(exercise => exercise.Weeks.Any(week => week.Number == Store.State.SelectedWeek)).ToList() ?? [];
     private int ExerciseCount => Session?.Exercises.Count ?? PlannedExercises.Count;
@@ -33,6 +39,7 @@ public partial class Home
 
     private async Task SelectWeekAsync(int week)
     {
+        FinishError = null;
         ExpandedRow = null;
         await Store.MutateAsync(state => state.SelectedWeek = week);
         ExpandFirstExercise();
@@ -40,6 +47,7 @@ public partial class Home
 
     private async Task SelectDayAsync(int day)
     {
+        FinishError = null;
         ExpandedRow = null;
         await Store.MutateAsync(state => state.SelectedDay = day);
         ExpandFirstExercise();
@@ -47,7 +55,12 @@ public partial class Home
 
     private async Task StartAsync()
     {
-        await Store.StartAsync();
+        if (!await Store.StartAsync())
+        {
+            return;
+        }
+        await StopTimerAsync();
+        FinishError = null;
         ExpandFirstExercise();
         scrollToExpandedExercise = true;
     }
@@ -63,7 +76,7 @@ public partial class Home
 
     private void ExpandFirstExercise()
     {
-        ExpandedRow = Session?.Exercises
+        ExpandedRow = !IsActive ? null : Session?.Exercises
             .FirstOrDefault(exercise => !exercise.Skipped && !exercise.Sets.All(set => set.Done))?.Row;
     }
 
@@ -81,39 +94,38 @@ public partial class Home
         scrollToExpandedExercise = ExpandedRow is not null;
     }
 
-    private QuickSetDraft GetQuickDraft(ExerciseResult exercise)
+    private void OpenExercise(int row)
     {
-        var key = $"{Session!.Id}:{exercise.Row}";
-        if (!QuickDrafts.TryGetValue(key, out var draft))
+        ExpandedRow = row;
+        scrollToExpandedExercise = true;
+    }
+
+    private async Task UpdateQuickDraftAsync(int row, string field, ChangeEventArgs arguments)
+    {
+        ExerciseError = null;
+        await Store.UpdateQuickDraftAsync(Session!.Id, row, field, arguments.Value?.ToString() ?? "");
+    }
+
+    private async Task ApplyQuickDraftAsync(ExerciseResult exercise)
+    {
+        var saved = await Store.FillRemainingSetsAsync(Session!.Id, exercise.Row,
+            exercise.QuickWeightInput, exercise.QuickRepetitionsInput);
+        ErrorRow = exercise.Row;
+        ExerciseError = saved ? null : Store.Error;
+        FinishError = null;
+        if (saved)
         {
-            var first = exercise.Sets.FirstOrDefault(set => !set.Done);
-            draft = new QuickSetDraft
-            {
-                Weight = string.IsNullOrEmpty(first?.WeightInput) ? FormatWeight(first?.Weight) : first.WeightInput,
-                Repetitions = first?.Repetitions?.ToString() ?? ""
-            };
-            QuickDrafts[key] = draft;
+            await StartTimerAsync(Store.State.Settings.RestSeconds);
         }
-        return draft;
     }
 
-    private async Task ApplyQuickDraftAsync(int row, QuickSetDraft draft)
+    private async Task PauseAsync()
     {
-        draft.Saved = await Store.FillRemainingSetsAsync(Session!.Id, row, draft.Weight, draft.Repetitions);
-        draft.Error = draft.Saved ? null : Store.Error;
-    }
-
-    private sealed class QuickSetDraft
-    {
-        public string Weight { get; set; } = "";
-        public string Repetitions { get; set; } = "";
-        public bool Saved { get; set; }
-        public string? Error { get; set; }
-
-        public void Changed()
+        if (await Store.PauseAsync(Session!.Id))
         {
-            Saved = false;
-            Error = null;
+            ExpandedRow = null;
+            FinishError = null;
+            ExerciseError = null;
         }
     }
 
@@ -121,6 +133,8 @@ public partial class Home
     {
         if (Session is not null)
         {
+            FinishError = null;
+            ExerciseError = null;
             await Store.UpdateSetAsync(Session.Id, row, index, field, arguments.Value?.ToString() ?? "");
         }
     }
@@ -132,7 +146,11 @@ public partial class Home
             return;
         }
         var wasDone = Session.Exercises.Single(exercise => exercise.Row == row).Sets[index].Done;
-        if (await Store.ToggleSetAsync(Session.Id, row, index) && !wasDone)
+        var saved = await Store.ToggleSetAsync(Session.Id, row, index);
+        ErrorRow = row;
+        ExerciseError = saved ? null : Store.Error;
+        FinishError = null;
+        if (saved && !wasDone)
         {
             await StartTimerAsync(Store.State.Settings.RestSeconds);
         }
@@ -140,11 +158,12 @@ public partial class Home
 
     private Task<bool> SkipAsync(int row)
     {
+        FinishError = null;
         var sessionId = Session!.Id;
         return Store.MutateAsync(state =>
         {
             var session = state.Sessions.Single(item => item.Id == sessionId);
-            if (session.FinishedAt is null)
+            if (session.FinishedAt is null && !session.IsPaused)
             {
                 var exercise = session.Exercises.Single(item => item.Row == row);
                 exercise.Skipped = !exercise.Skipped;
@@ -152,14 +171,37 @@ public partial class Home
         });
     }
 
-    private Task FinishAsync()
+    private async Task FinishAsync()
     {
-        return Store.CompleteAsync(Session!.Id);
+        if (Finishing)
+        {
+            return;
+        }
+        FinishError = FinishProblem;
+        if (FinishError is not null)
+        {
+            return;
+        }
+        Finishing = true;
+        try
+        {
+            if (!await Store.CompleteAsync(Session!.Id))
+            {
+                FinishError = Store.Error ?? "Не удалось сохранить. Попробуйте ещё раз.";
+            }
+        }
+        finally
+        {
+            Finishing = false;
+        }
     }
 
     private async Task StartTimerAsync(int seconds)
     {
-        await Javascript.InvokeVoidAsync("workout.timer.start", seconds);
+        if (ShowTimer)
+        {
+            await Javascript.InvokeVoidAsync("workout.timer.start", seconds);
+        }
     }
 
     private async Task StopTimerAsync()
@@ -186,7 +228,7 @@ public partial class Home
         return Store.MutateAsync(state =>
         {
             var session = state.Sessions.Single(item => item.Id == sessionId);
-            if (session.FinishedAt is null)
+            if (session.FinishedAt is null && !session.IsPaused)
             {
                 var exercise = session.Exercises.Single(item => item.Row == row);
                 exercise.TechniqueMaintained = value == "yes" ? true : value == "no" ? false : null;

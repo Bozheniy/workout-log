@@ -9,7 +9,7 @@ namespace WorkoutLog.Tests;
 public sealed class AppStoreTests
 {
     [Fact]
-    public async Task Bulk_entry_persists_all_unfinished_sets_without_inventing_reserve_or_completion()
+    public async Task Bulk_entry_completes_exercise_and_persists_without_inventing_reserve()
     {
         var browser = new StorageJavascript();
         var store = CreateStore(browser);
@@ -26,7 +26,7 @@ public sealed class AppStoreTests
             Assert.Equal("60,5", set.WeightInput);
             Assert.Equal(10, set.Repetitions);
             Assert.Null(set.Reserve);
-            Assert.False(set.Done);
+            Assert.True(set.Done);
         });
         Assert.Empty(reloaded.State.Outbox);
         Assert.Null(reloaded.CurrentSession.FinishedAt);
@@ -56,8 +56,9 @@ public sealed class AppStoreTests
         Assert.Equal(65, sets[1].Weight);
         Assert.Equal(12, sets[1].Repetitions);
         Assert.Equal(1, sets[1].Reserve);
-        Assert.False(sets[1].Done);
+        Assert.True(sets[1].Done);
 
+        await store.ToggleSetAsync(id, 5, 1);
         await store.UpdateSetAsync(id, 5, 1, "reps", "11");
         Assert.Equal(11, store.CurrentSession.Exercises[0].Sets[1].Repetitions);
     }
@@ -77,6 +78,8 @@ public sealed class AppStoreTests
         await store.StartAsync();
         var id = store.CurrentSession!.Id;
         await store.FillRemainingSetsAsync(id, 5, "40", "8");
+        await store.ToggleSetAsync(id, 5, 0);
+        await store.ToggleSetAsync(id, 5, 1);
         var revision = browser.Stored.Revision;
         Assert.False(await store.FillRemainingSetsAsync(id, 5, weight, repetitions));
         Assert.Equal(revision, browser.Stored.Revision);
@@ -112,6 +115,8 @@ public sealed class AppStoreTests
         await store.InitializeAsync();
         await store.StartAsync();
         await store.FillRemainingSetsAsync(store.CurrentSession!.Id, 5, "0", "12");
+        await store.ToggleSetAsync(store.CurrentSession.Id, 5, 0);
+        await store.ToggleSetAsync(store.CurrentSession.Id, 5, 1);
         browser.FailWrites = true;
         Assert.False(await store.FillRemainingSetsAsync(store.CurrentSession.Id, 5, "50", "8"));
         Assert.All(browser.Stored.Sessions[0].Exercises[0].Sets, set => Assert.Equal(0, set.Weight));
@@ -220,6 +225,126 @@ public sealed class AppStoreTests
         Assert.Null(store.CurrentSession.Exercises[0].Sets[0].Weight);
     }
 
+    [Fact]
+    public async Task Pause_and_reload_preserve_partial_results_and_unapplied_bulk_draft()
+    {
+        var browser = new StorageJavascript();
+        var store = CreateStore(browser);
+        await store.InitializeAsync();
+        await store.StartAsync();
+        var id = store.CurrentSession!.Id;
+        await store.UpdateSetAsync(id, 5, 0, "weight", "60,5");
+        await store.UpdateQuickDraftAsync(id, 5, "weight", "65,");
+        await store.UpdateQuickDraftAsync(id, 5, "reps", "12");
+        Assert.True(await store.PauseAsync(id));
+        Assert.False(store.HasActiveWorkout);
+        Assert.Empty(store.State.Outbox);
+
+        var restored = CreateStore(browser);
+        await restored.InitializeAsync();
+        Assert.True(restored.CurrentSession!.IsPaused);
+        Assert.Equal(60.5m, restored.CurrentSession.Exercises[0].Sets[0].Weight);
+        Assert.Equal("65,", restored.CurrentSession.Exercises[0].QuickWeightInput);
+        Assert.Equal("12", restored.CurrentSession.Exercises[0].QuickRepetitionsInput);
+        Assert.False(await restored.UpdateSetAsync(id, 5, 0, "weight", "80"));
+        Assert.False(await restored.FillRemainingSetsAsync(id, 5, "80", "8"));
+        Assert.True(await restored.StartAsync());
+        Assert.Equal(id, restored.CurrentSession.Id);
+        Assert.Single(restored.State.Sessions);
+        Assert.False(restored.CurrentSession.IsPaused);
+    }
+
+    [Fact]
+    public async Task Failed_pause_keeps_workout_active_and_results_intact()
+    {
+        var browser = new StorageJavascript();
+        var store = CreateStore(browser);
+        await store.InitializeAsync();
+        await store.StartAsync();
+        browser.FailWrites = true;
+        Assert.False(await store.PauseAsync(store.CurrentSession!.Id));
+        Assert.True(store.HasActiveWorkout);
+        Assert.False(browser.Stored.Sessions[0].IsPaused);
+    }
+
+    [Fact]
+    public async Task Timer_preference_survives_reload_and_stops_existing_countdown()
+    {
+        var browser = new StorageJavascript();
+        var store = CreateStore(browser);
+        await store.InitializeAsync();
+        await store.SetTimerEnabledAsync(false);
+        var restored = CreateStore(browser);
+        await restored.InitializeAsync();
+        Assert.False(restored.State.Settings.TimerEnabled);
+        Assert.Contains("workout.timer.stop", browser.Calls);
+    }
+
+    [Fact]
+    public async Task Empty_reserve_completes_without_copying_previous_reserve()
+    {
+        var store = CreateStore(new StorageJavascript());
+        await store.InitializeAsync();
+        await store.StartAsync();
+        var id = store.CurrentSession!.Id;
+        await store.UpdateSetAsync(id, 5, 0, "weight", "50");
+        await store.UpdateSetAsync(id, 5, 0, "reps", "10");
+        await store.UpdateSetAsync(id, 5, 0, "reserve", "2");
+        Assert.True(await store.ToggleSetAsync(id, 5, 0));
+        Assert.Null(store.CurrentSession.Exercises[0].Sets[1].Reserve);
+        Assert.True(await store.ToggleSetAsync(id, 5, 1));
+        Assert.True(await store.CompleteAsync(id));
+        Assert.Equal("2 / —", store.State.Outbox.Single().Cells.Single().Reserve);
+    }
+
+    [Theory]
+    [InlineData("xx")]
+    [InlineData("21")]
+    public async Task Invalid_nonempty_reserve_cannot_be_confirmed_by_bulk_entry(string reserve)
+    {
+        var store = CreateStore(new StorageJavascript());
+        await store.InitializeAsync();
+        await store.StartAsync();
+        var id = store.CurrentSession!.Id;
+        await store.UpdateSetAsync(id, 5, 0, "reserve", reserve);
+        Assert.False(await store.FillRemainingSetsAsync(id, 5, "60", "10"));
+        Assert.All(store.CurrentSession.Exercises[0].Sets, set => Assert.False(set.Done));
+    }
+
+    [Fact]
+    public async Task Update_waits_until_workout_is_paused_and_blocks_later_mutation_before_reload()
+    {
+        var store = CreateStore(new StorageJavascript());
+        await store.InitializeAsync();
+        await store.StartAsync();
+        Assert.False(await store.PrepareAppReload());
+        await store.PauseAsync(store.CurrentSession!.Id);
+        Assert.True(await store.PrepareAppReload());
+        Assert.False(await store.StartAsync());
+    }
+
+    [Fact]
+    public async Task Update_never_reloads_after_storage_failure()
+    {
+        var browser = new StorageJavascript();
+        var store = CreateStore(browser);
+        await store.InitializeAsync();
+        browser.FailWrites = true;
+        await store.StartAsync();
+        Assert.False(await store.PrepareAppReload());
+    }
+
+    [Fact]
+    public async Task Completion_failure_explains_unfinished_work_and_does_not_create_queue()
+    {
+        var store = CreateStore(new StorageJavascript());
+        await store.InitializeAsync();
+        await store.StartAsync();
+        Assert.False(await store.CompleteAsync(store.CurrentSession!.Id));
+        Assert.Contains("Пока нет выполненных", store.Error);
+        Assert.Empty(store.State.Outbox);
+    }
+
     private static AppStore CreateStore(StorageJavascript javascript)
     {
         var configuration = new ConfigurationBuilder().Build();
@@ -240,9 +365,11 @@ public sealed class AppStoreTests
     {
         public LocalState Stored { get; private set; } = new() { Plan = PlanAndQueueTests.Plan() };
         public bool FailWrites { get; set; }
+        public List<string> Calls { get; } = [];
 
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
         {
+            Calls.Add(identifier);
             object? result = null;
             switch (identifier)
             {

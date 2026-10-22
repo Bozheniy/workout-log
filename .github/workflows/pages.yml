@@ -26,6 +26,8 @@ jobs:
           dotnet-version: "10.0.x"
       - name: Проверить правила и защиту синхронизации
         run: dotnet test --configuration Release
+      - name: Проверить безопасное обновление PWA
+        run: node --test tests/WorkoutLog.BrowserTests/pwa.test.mjs
       - name: Собрать PWA для пути репозитория
         shell: pwsh
         run: ./scripts/publish.ps1 -BasePath "/${{ github.event.repository.name }}/"

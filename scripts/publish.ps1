@@ -18,6 +18,8 @@ if ($BasePath -notmatch '^/[a-zA-Z0-9_/-]*$') {
 try {
     # Меняем base ДО publish: хэш index.html в манифесте PWA будет правильным.
     $publishedHtml = $originalHtml.Replace('<base href="/" />', '<base href="' + $BasePath + '" />')
+    # Версия страницы позволяет отличить первое включение PWA от обновления.
+    $publishedHtml = $publishedHtml.Replace('__APP_BUILD__', [Guid]::NewGuid().ToString('N'))
     [System.IO.File]::WriteAllText($indexPath, $publishedHtml)
     $output = Join-Path $projectRoot $OutputDirectory
     dotnet publish (Join-Path $projectRoot "src/WorkoutLog.Web/WorkoutLog.Web.csproj") `

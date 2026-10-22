@@ -57,14 +57,18 @@
         </section>
         <section class="settings-card">
             <div class="settings-heading"><span class="settings-icon"><Icon Name="clock" /></span><div><h2>Твой темп</h2><p>Отдых между подходами</p></div><span class="step-number">03</span></div>
-            <label for="rest-seconds">Автоматический таймер</label>
-            <select id="rest-seconds" class="field" @bind="RestSeconds" @bind:after="SaveRestAsync">
+            <label class="timer-toggle" for="timer-enabled">
+                <input id="timer-enabled" type="checkbox" checked="@Store.State.Settings.TimerEnabled" @onchange="SaveTimerEnabledAsync" disabled="@Store.StorageFailed" />
+                Таймер во время тренировки
+            </label>
+            <label for="rest-seconds">Длительность отдыха</label>
+            <select id="rest-seconds" class="field" disabled="@(!Store.State.Settings.TimerEnabled || Store.StorageFailed)" @bind="RestSeconds" @bind:after="SaveRestAsync">
                 <option value="60">1 минута</option>
                 <option value="90">1 минута 30 секунд</option>
                 <option value="120">2 минуты</option>
                 <option value="180">3 минуты</option>
             </select>
-            <p class="field-help">Таймер запускается после отметки выполненного подхода.</p>
+            <p class="field-help">@(Store.State.Settings.TimerEnabled ? "Запускается после выполненного подхода или общего ввода." : "Таймер скрыт и не запускается.")</p>
         </section>
     </div>
     <aside>
@@ -78,6 +82,11 @@
                 <p class="install-hint" role="status">@InstallHint</p>
             }
             <div class="install-check"><Icon Name="@(Store.OfflineReady ? "check" : "clock")" Size="18" /> @(Store.OfflineReady ? "Приложение загружено для офлайн" : "Офлайн-кэш ещё загружается")</div>
+            <button class="button secondary full-width" @onclick="CheckUpdateAsync">Проверить обновление</button>
+            @if (UpdateHint is not null)
+            {
+                <p class="field-help" role="status">@UpdateHint</p>
+            }
         </section>
         <section class="settings-card">
             <div class="card-label">СОХРАННОСТЬ ДАННЫХ <Icon Name="shield" Size="20" /></div>

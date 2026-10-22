@@ -50,6 +50,37 @@
 .quick-error {
     color: #a3482b;
 }
+.quick-help {
+    display: block;
+    margin-top: 6px;
+    font-size: 11px;
+    color: #68725f;
+}
+.pause-workout {
+    margin-top: 14px;
+}
+.paused-note {
+    font-size: 13px;
+    line-height: 1.5;
+}
+.finish-feedback {
+    padding: 12px 16px;
+    margin-top: 8px;
+    border-radius: 8px;
+    background: #f5f2e8;
+    color: #61563e;
+    font-size: 13px;
+    line-height: 1.6;
+}
+.finish-feedback[role="alert"] {
+    background: #fff1e9;
+    color: #8c452c;
+}
+.finish-feedback button {
+    display: block;
+    text-align: left;
+    min-height: 44px;
+}
 .current-sheet-result {
     font-size: 11px;
     color: #68725f;

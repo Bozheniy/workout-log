@@ -40,12 +40,15 @@ public partial class History
 
     private async Task ResumeAsync(WorkoutSession session)
     {
-        await Store.MutateAsync(state =>
+        var selected = await Store.MutateAsync(state =>
         {
             state.SelectedWeek = session.Week;
             state.SelectedDay = state.Plan!.Days.FindIndex(day => day.HeaderRow == session.DayRow);
         });
-        Navigation.NavigateTo("");
+        if (selected && await Store.StartAsync())
+        {
+            Navigation.NavigateTo("");
+        }
     }
 
     private static string TableUrl(PendingUpload upload)

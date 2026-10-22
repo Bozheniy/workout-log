@@ -16,6 +16,7 @@ public partial class Admin
     private string ClientId { get; set; } = "";
     private int RestSeconds { get; set; } = 120;
     private string? InstallHint { get; set; }
+    private string? UpdateHint { get; set; }
 
     private string GoogleConnectionHint
     {
@@ -77,6 +78,19 @@ public partial class Admin
     private Task<bool> SaveRestAsync()
     {
         return Store.MutateAsync(state => state.Settings.RestSeconds = RestSeconds);
+    }
+
+    private Task<bool> SaveTimerEnabledAsync(ChangeEventArgs arguments)
+    {
+        return Store.SetTimerEnabledAsync(arguments.Value is true);
+    }
+
+    private async Task CheckUpdateAsync()
+    {
+        var checkedOnline = await Javascript.InvokeAsync<bool>("workout.pwa.checkUpdate");
+        UpdateHint = checkedOnline
+            ? "Проверка выполнена. Новая версия загрузится автоматически; активная тренировка не прервётся."
+            : "Не удалось проверить обновление. Попробуйте при подключении к интернету.";
     }
 
     private async Task InstallAsync()

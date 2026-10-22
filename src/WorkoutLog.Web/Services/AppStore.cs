@@ -15,6 +15,7 @@ public sealed class AppStore(
     private DotNetObjectReference<AppStore>? reference;
     private Task? initialization;
     private LocalState? unsavedDraft;
+    private bool reloadingForUpdate;
 
     public LocalState State { get; private set; } = new();
     public bool Ready { get; private set; }
@@ -26,10 +27,12 @@ public sealed class AppStore(
     public bool StorageFailed { get; private set; }
     public bool SignedIn { get; private set; }
     public bool LoginReady { get; private set; }
+    public bool UpdateAvailable { get; private set; }
     public string? Error { get; private set; }
     public string? Notice { get; private set; }
     public DateTimeOffset? LastSavedAt { get; private set; }
     public event Action? Changed;
+    public bool HasActiveWorkout => State.Sessions.Any(session => session.FinishedAt is null && !session.IsPaused);
 
     public Task InitializeAsync()
     {
@@ -58,6 +61,10 @@ public sealed class AppStore(
             }
             reference = DotNetObjectReference.Create(this);
             Online = await javascript.InvokeAsync<bool>("workout.initialize", reference);
+            if (!State.Settings.TimerEnabled || !HasActiveWorkout)
+            {
+                await javascript.InvokeVoidAsync("workout.timer.stop");
+            }
             OfflineReady = await javascript.InvokeAsync<bool>("workout.pwa.ready");
             PersistentStorage = await javascript.InvokeAsync<bool>("workout.storage.isPersistent");
             Ready = true;
@@ -83,7 +90,7 @@ public sealed class AppStore(
 
     public async Task<bool> MutateAsync(Action<LocalState> mutation)
     {
-        if (StorageFailed)
+        if (StorageFailed || reloadingForUpdate)
         {
             return false;
         }
@@ -91,6 +98,10 @@ public sealed class AppStore(
         LocalState? next = null;
         try
         {
+            if (reloadingForUpdate)
+            {
+                return false;
+            }
             // Копия становится текущей только после подтверждения IndexedDB.
             next = JsonSerializer.Deserialize<LocalState>(JsonSerializer.Serialize(State))!;
             mutation(next);
@@ -126,7 +137,7 @@ public sealed class AppStore(
 
     public async Task RefreshPlanAsync()
     {
-        if (Busy || StorageFailed)
+        if (Busy || StorageFailed || reloadingForUpdate)
         {
             return;
         }
@@ -171,20 +182,95 @@ public sealed class AppStore(
         }
     }
 
-    public Task<bool> StartAsync()
+    public async Task<bool> StartAsync()
     {
-        return MutateAsync(state =>
+        var saved = await MutateAsync(state =>
         {
             var plan = state.Plan ?? throw new InvalidOperationException("Сначала загрузите план.");
             var day = plan.Days[state.SelectedDay];
-            if (state.Sessions.Any(session => session.SpreadsheetId == plan.SpreadsheetId
+            var existing = state.Sessions.LastOrDefault(session => session.SpreadsheetId == plan.SpreadsheetId
                 && session.SheetId == plan.SheetId && session.DayRow == day.HeaderRow
-                && session.Week == state.SelectedWeek))
+                && session.Week == state.SelectedWeek);
+            if (existing?.FinishedAt is not null)
             {
                 return;
             }
-            state.Sessions.Add(WorkoutRules.Start(plan, day, state.SelectedWeek));
+            // Одновременно активна одна тренировка. Остальные черновики сохраняются.
+            foreach (var session in state.Sessions.Where(session => session.FinishedAt is null))
+            {
+                session.IsPaused = true;
+            }
+            if (existing is null)
+            {
+                state.Sessions.Add(WorkoutRules.Start(plan, day, state.SelectedWeek));
+            }
+            else
+            {
+                if (!existing.Exercises.Any(exercise => exercise.Sets.Any(set =>
+                    set.Done || set.Weight.HasValue || set.Repetitions.HasValue || set.Reserve.HasValue
+                    || set.WeightInput.Length > 0 || set.ReserveInput.Length > 0)
+                    || exercise.QuickWeightInput.Length > 0 || exercise.QuickRepetitionsInput.Length > 0))
+                {
+                    existing.StartedAt = DateTimeOffset.UtcNow;
+                }
+                existing.IsPaused = false;
+            }
         });
+        if (saved)
+        {
+            await javascript.InvokeVoidAsync("workout.timer.stop");
+        }
+        return saved;
+    }
+
+    public async Task<bool> PauseAsync(string sessionId)
+    {
+        var saved = await MutateAsync(state =>
+        {
+            var session = state.Sessions.Single(item => item.Id == sessionId);
+            session.IsPaused = true;
+        });
+        if (saved)
+        {
+            await javascript.InvokeVoidAsync("workout.timer.stop");
+        }
+        return saved;
+    }
+
+    public async Task<bool> SetTimerEnabledAsync(bool enabled)
+    {
+        var saved = await MutateAsync(state => state.Settings.TimerEnabled = enabled);
+        if (saved && !enabled)
+        {
+            await javascript.InvokeVoidAsync("workout.timer.stop");
+        }
+        return saved;
+    }
+
+    public Task<bool> UpdateQuickDraftAsync(string sessionId, int row, string field, string value)
+    {
+        return MutateAsync(state =>
+        {
+            var session = state.Sessions.Single(item => item.Id == sessionId);
+            EnsureEditable(session);
+            var exercise = session.Exercises.Single(item => item.Row == row);
+            if (field == "weight")
+            {
+                exercise.QuickWeightInput = value;
+            }
+            else
+            {
+                exercise.QuickRepetitionsInput = value;
+            }
+        });
+    }
+
+    private static void EnsureEditable(WorkoutSession session)
+    {
+        if (session.FinishedAt is not null || session.IsPaused)
+        {
+            throw new InvalidOperationException("Сначала продолжите тренировку. Завершённые записи доступны только для просмотра.");
+        }
     }
 
     public Task<bool> UpdateSetAsync(string sessionId, int row, int index, string field, string value)
@@ -192,10 +278,7 @@ public sealed class AppStore(
         return MutateAsync(state =>
         {
             var session = state.Sessions.Single(item => item.Id == sessionId);
-            if (session.FinishedAt is not null)
-            {
-                throw new InvalidOperationException("Завершённая тренировка доступна для просмотра.");
-            }
+            EnsureEditable(session);
             var exercise = session.Exercises.Single(item => item.Row == row);
             var set = exercise.Sets[index];
             if (set.Done || exercise.Skipped)
@@ -215,6 +298,7 @@ public sealed class AppStore(
             }
             else
             {
+                set.ReserveInput = value;
                 set.Reserve = int.TryParse(normalized, out var reserve) ? reserve : null;
             }
         });
@@ -235,10 +319,7 @@ public sealed class AppStore(
         return await MutateAsync(state =>
         {
             var session = state.Sessions.Single(item => item.Id == sessionId);
-            if (session.FinishedAt is not null)
-            {
-                return;
-            }
+            EnsureEditable(session);
             var exercise = session.Exercises.Single(item => item.Row == row);
             var set = exercise.Sets[index];
             if (exercise.Skipped)
@@ -247,7 +328,7 @@ public sealed class AppStore(
             }
             if (!set.Done && !WorkoutRules.IsValid(set))
             {
-                throw new InvalidOperationException("Введите вес (0–2000 кг), повторы (1–500) и запас (0–20).");
+                throw new InvalidOperationException("Введите вес (0–2000 кг) и повторы (1–500). Запас — от 0 до 20 или пустое поле.");
             }
             set.Done = !set.Done;
             if (set.Done && index + 1 < exercise.Sets.Count)
@@ -260,12 +341,12 @@ public sealed class AppStore(
                     next.WeightInput = set.Weight!.Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
                 }
                 next.Repetitions ??= set.Repetitions;
-                next.Reserve ??= set.Reserve;
+                // Запас не копируем: пустое поле означает отсутствие записи пользователя.
             }
         });
     }
 
-    public async Task CompleteAsync(string sessionId)
+    public async Task<bool> CompleteAsync(string sessionId)
     {
         var saved = await MutateAsync(state =>
         {
@@ -274,14 +355,16 @@ public sealed class AppStore(
         });
         if (saved)
         {
+            await javascript.InvokeVoidAsync("workout.timer.stop");
             Notice = "Тренировка сохранена. Результаты ожидают отправки в Google.";
             await SyncAsync();
         }
+        return saved;
     }
 
     public async Task SyncAsync(bool manual = false)
     {
-        if (!Ready || !Online || StorageFailed || !await syncGate.WaitAsync(0))
+        if (!Ready || !Online || StorageFailed || reloadingForUpdate || !await syncGate.WaitAsync(0))
         {
             return;
         }
@@ -329,7 +412,10 @@ public sealed class AppStore(
                                 if (week is not null)
                                 {
                                     week.ExistingLoad = cell.Load;
-                                    week.ExistingReserve = cell.Reserve;
+                                    if (cell.WritesReserve)
+                                    {
+                                        week.ExistingReserve = cell.Reserve;
+                                    }
                                 }
                             }
                         }
@@ -485,6 +571,34 @@ public sealed class AppStore(
             ? "Браузер разрешил постоянное хранение."
             : "Браузер пока не разрешил постоянное хранение. Сохраняйте резервную копию.";
         Notify();
+    }
+
+    [JSInvokable]
+    public void AppUpdateReady()
+    {
+        UpdateAvailable = true;
+        Notify();
+    }
+
+    [JSInvokable]
+    public async Task<bool> PrepareAppReload()
+    {
+        // Ждём окончания записи. Во время тренировки, синхронизации и ошибки хранения
+        // автоматическая перезагрузка запрещена: пользователь продолжает работу.
+        await mutationGate.WaitAsync();
+        try
+        {
+            if (!Ready || StorageFailed || HasActiveWorkout || Busy || Syncing)
+            {
+                return false;
+            }
+            reloadingForUpdate = true;
+            return true;
+        }
+        finally
+        {
+            mutationGate.Release();
+        }
     }
 
     [JSInvokable]

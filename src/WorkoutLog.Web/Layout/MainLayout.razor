@@ -55,6 +55,10 @@
                 </div>
             }
             @Body
+            @if (Store.UpdateAvailable)
+            {
+                <div class="message notice app-update" role="status">Обновление готово. Приложение обновится после выхода из тренировки, когда данные сохранены.</div>
+            }
         </main>
         <footer class="page-footer"><span>ТВОЙ ТЕМП. ТВОЙ ПРОГРЕСС.</span><span>ритм © @DateTime.Now.Year</span></footer>
     </div>

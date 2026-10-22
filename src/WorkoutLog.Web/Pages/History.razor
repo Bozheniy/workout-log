@@ -32,7 +32,12 @@
                         <a class="text-link" href="@TableUrl(upload)" target="_blank" rel="noopener noreferrer">Открыть Google-таблицу ↗</a>
                         @foreach (var cell in upload.Cells)
                         {
-                            <div class="conflict-cell"><strong>@cell.ExerciseName · @SheetParser.ColumnName(cell.LoadColumn)@cell.Row</strong><pre>@cell.Load</pre><span>Запас: @cell.Reserve</span></div>
+                            <div class="conflict-cell"><strong>@cell.ExerciseName · @SheetParser.ColumnName(cell.LoadColumn)@cell.Row</strong><pre>@cell.Load</pre>
+                                @if (cell.WritesReserve)
+                                {
+                                    <span>Запас: @cell.Reserve</span>
+                                }
+                            </div>
                         }
                         <button class="button secondary" @onclick="() => RetryConflictAsync(upload.Id)">Проверить снова</button>
                     </details>
@@ -54,7 +59,7 @@ else
             <summary>
                 <div class="history-date"><strong>@session.StartedAt.ToLocalTime().ToString("dd")</strong><span>@session.StartedAt.ToLocalTime().ToString("MMM")</span></div>
                 <div class="history-title"><h3>@session.DayName</h3><p>Неделя @session.Week · @session.CompletedSets/@session.TotalSets подходов · @session.Volume.ToString("N0") кг</p></div>
-                <span class="badge @(session.SyncedAt is not null ? "green" : "")">@(session.SyncedAt is not null ? "В Google" : session.FinishedAt is not null ? "На устройстве" : "В процессе")</span>
+                <span class="badge @(session.SyncedAt is not null ? "green" : "")">@(session.SyncedAt is not null ? "В Google" : session.FinishedAt is not null ? "На устройстве" : session.IsPaused ? "На паузе" : "В процессе")</span>
                 <Icon Name="chevron" Size="18" />
             </summary>
             <div class="history-body">
@@ -63,7 +68,12 @@ else
                     <div class="history-exercise"><strong>@exercise.Name</strong><div class="result-chips">
                         @foreach (var set in exercise.Sets.Where(set => set.Done))
                         {
-                            <span>@set.Weight кг × @set.Repetitions <small>запас @set.Reserve</small></span>
+                            <span>@set.Weight кг × @set.Repetitions
+                                @if (set.Reserve is not null)
+                                {
+                                    <small>запас @set.Reserve</small>
+                                }
+                            </span>
                         }
                         @if (exercise.Skipped)
                         {

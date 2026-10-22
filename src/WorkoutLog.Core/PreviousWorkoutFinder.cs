@@ -57,8 +57,9 @@ public static partial class PreviousWorkoutFinder
         var completed = result.Sets.Where(set => set.Done).ToList();
         var load = string.Join("\n", completed.Select(set =>
             $"{set.Weight?.ToString("0.##", CultureInfo.InvariantCulture)} кг × {set.Repetitions}"));
-        var reserve = string.Join(" / ", completed.Select(set => set.Reserve));
-        return load == week.ExistingLoad.Replace("\r\n", "\n") && reserve == week.ExistingReserve;
+        var reserve = WorkoutRules.FormatReserves(completed);
+        return load == week.ExistingLoad.Replace("\r\n", "\n")
+            && (reserve.Length == 0 || reserve == week.ExistingReserve);
     }
 
     private static PreviousExercise FromLocal(WorkoutSession session, ExerciseResult exercise)

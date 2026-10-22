@@ -1,0 +1,12 @@
+.timer-toggle {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 48px;
+    margin-bottom: 16px;
+}
+.timer-toggle input {
+    width: 22px;
+    height: 22px;
+    accent-color: #d37743;
+}
