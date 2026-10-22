@@ -21,7 +21,7 @@
                 <div><strong>@upload.DayName <span class="muted">· неделя @upload.Week</span></strong><p>@upload.Message</p></div>
                 @if (upload.Status == UploadStatus.NeedsSignIn)
                 {
-                    <a class="text-link" href="admin">Подключить Google ↗</a>
+                    <a class="text-link" href="admin">Подключить Google</a>
                 }
                 @if (upload.Status == UploadStatus.Conflict)
                 {
@@ -29,7 +29,7 @@
                         <summary>Как разрешить конфликт</summary>
                         <p>Открой таблицу и сравни её с результатами ниже. Если тренер переставил строки, перенеси результаты вручную в нужное упражнение. Не удаляй локальную копию до проверки.</p>
                         <p>Если строки не менялись, можно вручную привести ячейки к значениям ниже и нажать «Проверить снова». Приложение подтвердит совпадение и уберёт запись из очереди.</p>
-                        <a class="text-link" href="@TableUrl(upload)" target="_blank" rel="noopener noreferrer">Открыть Google-таблицу ↗</a>
+                        <a class="text-link" href="@TableUrl(upload)" target="_blank" rel="noopener noreferrer">Открыть Google-таблицу</a>
                         @foreach (var cell in upload.Cells)
                         {
                             <div class="conflict-cell"><strong>@cell.ExerciseName · @SheetParser.ColumnName(cell.LoadColumn)@cell.Row</strong><pre>@cell.Load</pre>

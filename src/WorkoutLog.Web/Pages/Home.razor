@@ -259,7 +259,7 @@ else
                         {
                             @foreach (var unfinished in Session.Exercises.Where(exercise => !exercise.Skipped && exercise.Sets.Any(set => !set.Done)))
                             {
-                                <button class="text-button" @onclick="() => OpenExercise(unfinished.Row)">@unfinished.Name ↗</button>
+                                <button class="text-button" @onclick="() => OpenExercise(unfinished.Row)">@unfinished.Name</button>
                             }
                         }
                     </div>

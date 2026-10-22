@@ -141,11 +141,6 @@ svg {
 .desktop-nav a:not(.active):hover {
     background: #f0f0eb;
 }
-.nav-arrow {
-    margin-left: auto;
-    color: #f19167;
-    font-size: 18px;
-}
 .sidebar-bottom {
     margin-top: auto;
     padding: 70px 10px 0;
@@ -1484,9 +1479,6 @@ input[type="file"]::file-selector-button {
         padding-left: 10px;
         font-size: 11px;
         gap: 8px;
-    }
-    .nav-arrow {
-        display: none;
     }
     .breadcrumb {
         font-size: 8px;

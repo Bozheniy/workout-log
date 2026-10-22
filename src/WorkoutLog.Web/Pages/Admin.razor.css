@@ -1,3 +1,13 @@
+.install-card .button.secondary {
+    /* На тёмной карточке кнопка остаётся светлой во всех состояниях. */
+    color: #fff;
+    background: #3e4136;
+    border-color: #89917c;
+}
+.install-card .button.secondary:hover:not(:disabled) {
+    background: #505544;
+}
+
 .timer-toggle {
     display: flex;
     align-items: center;
