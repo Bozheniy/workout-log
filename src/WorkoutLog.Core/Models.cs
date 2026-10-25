@@ -73,26 +73,54 @@ public sealed class WorkoutSession
     // Старые незавершённые записи открываются как сохранённые черновики.
     public bool IsPaused { get; set; } = true;
     public List<ExerciseResult> Exercises { get; set; } = [];
-    public int CompletedSets => Exercises.Sum(exercise => exercise.Sets.Count(set => set.Done));
-    public int TotalSets => Exercises.Sum(exercise => exercise.Sets.Count);
-    public decimal Volume => Exercises.Sum(exercise => exercise.Sets
+    public int CompletedSets => Exercises.Sum(exercise => exercise.CompletedSets);
+    public int TotalSets => Exercises.Sum(exercise => exercise.TotalSets);
+    public decimal Volume => Exercises.SelectMany(exercise => exercise.Entries).Sum(exercise => exercise.Sets
         .Where(set => set.Done).Sum(set => (set.Weight ?? 0) * (set.Repetitions ?? 0)));
 }
 
-public sealed class ExerciseResult
+// Обычное упражнение и часть суперсета используют одинаковые поля ввода.
+public class ExercisePerformance
 {
-    public int Row { get; set; }
     public string Name { get; set; } = "";
-    public int LoadColumn { get; set; }
     public string PlannedRepetitions { get; set; } = "";
-    public string BaselineLoad { get; set; } = "";
-    public string BaselineReserve { get; set; } = "";
     public bool Skipped { get; set; }
     public string QuickWeightInput { get; set; } = "";
     public string QuickRepetitionsInput { get; set; } = "";
     // null означает, что пользователь ещё не оценивал технику.
     public bool? TechniqueMaintained { get; set; }
     public List<SetResult> Sets { get; set; } = [];
+}
+
+public sealed class ExerciseResult : ExercisePerformance
+{
+    public int Row { get; set; }
+    public int LoadColumn { get; set; }
+    public string BaselineLoad { get; set; } = "";
+    public string BaselineReserve { get; set; } = "";
+    // Одна строка таблицы содержит несколько независимых результатов.
+    // Пустой список сохраняет совместимость с прежними записями.
+    public List<ExercisePerformance> Parts { get; set; } = [];
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public IEnumerable<ExercisePerformance> Entries => Parts.Count > 0 ? Parts : [this];
+    public int CompletedSets => Entries.Sum(entry => entry.Sets.Count(set => set.Done));
+    public int TotalSets => Entries.Sum(entry => entry.Sets.Count);
+    public bool IsComplete => Entries.All(entry => entry.Skipped || entry.Sets.All(set => set.Done));
+    public bool IsSkipped => Entries.All(entry => entry.Skipped);
+
+    public ExercisePerformance Entry(int? partIndex)
+    {
+        if (partIndex is null && Parts.Count == 0)
+        {
+            return this;
+        }
+        if (partIndex is >= 0 && partIndex < Parts.Count)
+        {
+            return Parts[partIndex.Value];
+        }
+        throw new InvalidOperationException("Выберите упражнение внутри суперсета.");
+    }
 }
 
 public sealed class SetResult

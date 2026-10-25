@@ -28,9 +28,11 @@ public sealed record ProgressionContext(
     int Week,
     int SetCount,
     string Repetitions,
-    DateTimeOffset? StartedAt = null)
+    DateTimeOffset? StartedAt = null,
+    string? PartName = null)
 {
-    public string SettingsKey => $"{SpreadsheetId}:{SheetId}:{DayRow}:{ExerciseRow}:{ExerciseName}";
+    public string SettingsKey => $"{SpreadsheetId}:{SheetId}:{DayRow}:{ExerciseRow}:{ExerciseName}"
+        + (PartName is null ? "" : $":part:{PartName}");
 }
 
 public sealed class PreviousExercise

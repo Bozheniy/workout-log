@@ -1,4 +1,3 @@
-using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using WorkoutLog.Core;
@@ -15,8 +14,6 @@ public partial class Home
     private bool scrollToExpandedExercise;
     private string? FinishError { get; set; }
     private bool Finishing { get; set; }
-    private int? ErrorRow { get; set; }
-    private string? ExerciseError { get; set; }
     private WorkoutPlan? Plan => Store.State.Plan;
     private TrainingDay? CurrentDay => Plan?.Days[Store.State.SelectedDay];
     private WorkoutSession? Session => Store.CurrentSession;
@@ -25,9 +22,11 @@ public partial class Home
     private string? FinishProblem => Session is null ? null : WorkoutRules.CompletionProblem(Session);
     private List<PlannedExercise> PlannedExercises => CurrentDay?.Exercises
         .Where(exercise => exercise.Weeks.Any(week => week.Number == Store.State.SelectedWeek)).ToList() ?? [];
-    private int ExerciseCount => Session?.Exercises.Count ?? PlannedExercises.Count;
+    private int ExerciseCount => Session?.Exercises.Sum(exercise => exercise.Entries.Count())
+        ?? PlannedExercises.Sum(exercise => Math.Max(1, SupersetRules.Names(exercise.Name).Count));
     private int TotalSets => Session?.TotalSets ?? PlannedExercises.Sum(exercise =>
-        exercise.Weeks.Single(week => week.Number == Store.State.SelectedWeek).Sets);
+        exercise.Weeks.Single(week => week.Number == Store.State.SelectedWeek).Sets
+            * Math.Max(1, SupersetRules.Names(exercise.Name).Count));
     private int ProgressPercent => TotalSets == 0 ? 0 : (Session?.CompletedSets ?? 0) * 100 / TotalSets;
 
     protected override async Task OnInitializedAsync()
@@ -77,7 +76,7 @@ public partial class Home
     private void ExpandFirstExercise()
     {
         ExpandedRow = !IsActive ? null : Session?.Exercises
-            .FirstOrDefault(exercise => !exercise.Skipped && !exercise.Sets.All(set => set.Done))?.Row;
+            .FirstOrDefault(exercise => !exercise.IsComplete)?.Row;
     }
 
     private bool IsDayCompleted(TrainingDay day)
@@ -100,75 +99,13 @@ public partial class Home
         scrollToExpandedExercise = true;
     }
 
-    private async Task UpdateQuickDraftAsync(int row, string field, ChangeEventArgs arguments)
-    {
-        ExerciseError = null;
-        await Store.UpdateQuickDraftAsync(Session!.Id, row, field, arguments.Value?.ToString() ?? "");
-    }
-
-    private async Task ApplyQuickDraftAsync(ExerciseResult exercise)
-    {
-        var saved = await Store.FillRemainingSetsAsync(Session!.Id, exercise.Row,
-            exercise.QuickWeightInput, exercise.QuickRepetitionsInput);
-        ErrorRow = exercise.Row;
-        ExerciseError = saved ? null : Store.Error;
-        FinishError = null;
-        if (saved)
-        {
-            await StartTimerAsync(Store.State.Settings.RestSeconds);
-        }
-    }
-
     private async Task PauseAsync()
     {
         if (await Store.PauseAsync(Session!.Id))
         {
             ExpandedRow = null;
             FinishError = null;
-            ExerciseError = null;
         }
-    }
-
-    private async Task UpdateSetAsync(int row, int index, string field, ChangeEventArgs arguments)
-    {
-        if (Session is not null)
-        {
-            FinishError = null;
-            ExerciseError = null;
-            await Store.UpdateSetAsync(Session.Id, row, index, field, arguments.Value?.ToString() ?? "");
-        }
-    }
-
-    private async Task ToggleSetAsync(int row, int index)
-    {
-        if (Session is null)
-        {
-            return;
-        }
-        var wasDone = Session.Exercises.Single(exercise => exercise.Row == row).Sets[index].Done;
-        var saved = await Store.ToggleSetAsync(Session.Id, row, index);
-        ErrorRow = row;
-        ExerciseError = saved ? null : Store.Error;
-        FinishError = null;
-        if (saved && !wasDone)
-        {
-            await StartTimerAsync(Store.State.Settings.RestSeconds);
-        }
-    }
-
-    private Task<bool> SkipAsync(int row)
-    {
-        FinishError = null;
-        var sessionId = Session!.Id;
-        return Store.MutateAsync(state =>
-        {
-            var session = state.Sessions.Single(item => item.Id == sessionId);
-            if (session.FinishedAt is null && !session.IsPaused)
-            {
-                var exercise = session.Exercises.Single(item => item.Row == row);
-                exercise.Skipped = !exercise.Skipped;
-            }
-        });
     }
 
     private async Task FinishAsync()
@@ -209,41 +146,38 @@ public partial class Home
         await Javascript.InvokeVoidAsync("workout.timer.stop");
     }
 
-    private static string FormatWeight(decimal? weight)
-    {
-        return weight?.ToString("0.##", CultureInfo.InvariantCulture) ?? "";
-    }
-
-    private ProgressionContext ProgressionFor(int row, string name, int sets, string repetitions)
+    private ProgressionContext ProgressionFor(int row, string name, int sets, string repetitions, string? partName = null)
     {
         return new ProgressionContext(Plan!.SpreadsheetId, Plan.SheetId,
             CurrentDay!.HeaderRow, row, name, Store.State.SelectedWeek,
-            sets, repetitions, Session?.StartedAt);
+            sets, repetitions, Session?.StartedAt, partName);
     }
 
-    private Task<bool> SaveTechniqueAsync(int row, ChangeEventArgs arguments)
+    private void ClearFinishError()
+    {
+        FinishError = null;
+    }
+
+    private Task<bool> SplitSupersetAsync(int row)
     {
         var sessionId = Session!.Id;
-        var value = arguments.Value?.ToString();
-        return Store.MutateAsync(state =>
-        {
-            var session = state.Sessions.Single(item => item.Id == sessionId);
-            if (session.FinishedAt is null && !session.IsPaused)
-            {
-                var exercise = session.Exercises.Single(item => item.Row == row);
-                exercise.TechniqueMaintained = value == "yes" ? true : value == "no" ? false : null;
-            }
-        });
+        return Store.MutateAsync(state => SupersetRules.Enable(
+            state.Sessions.Single(session => session.Id == sessionId), row));
     }
 
-    private static string TechniqueValue(ExerciseResult exercise)
+    private static string ExerciseSummary(ExerciseResult exercise)
     {
-        return exercise.TechniqueMaintained switch
-        {
-            true => "yes",
-            false => "no",
-            _ => ""
-        };
+        return exercise.Parts.Count > 0
+            ? $"Суперсет · {exercise.Sets.Count} круга · {exercise.Parts.Count} упражнения"
+            : $"{exercise.Sets.Count} подхода × {exercise.PlannedRepetitions} повторений";
+    }
+
+    private static IEnumerable<(string? Name, string Repetitions)> PreviewParts(PlannedExercise exercise, WeekPrescription week)
+    {
+        var names = SupersetRules.Names(exercise.Name);
+        return names.Count == 0
+            ? [(null, week.Repetitions)]
+            : names.Select((name, index) => ((string?)name, SupersetRules.Repetitions(week.Repetitions, index, names.Count)));
     }
 
     private void OnStoreChanged()

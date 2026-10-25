@@ -9,6 +9,89 @@ namespace WorkoutLog.Tests;
 public sealed class AppStoreTests
 {
     [Fact]
+    public async Task Version_one_migration_splits_only_empty_drafts_and_preserves_finished_and_filled_records()
+    {
+        var browser = new StorageJavascript();
+        browser.Stored.Plan = SupersetTests.Plan();
+        var empty = SupersetTests.Start();
+        var filled = SupersetTests.Start();
+        var finished = SupersetTests.Start();
+        empty.Exercises[0].Parts.Clear();
+        filled.Exercises[0].Parts.Clear();
+        finished.Exercises[0].Parts.Clear();
+        filled.Exercises[0].QuickWeightInput = "40,";
+        finished.FinishedAt = DateTimeOffset.UtcNow;
+        browser.Stored.Sessions = [empty, filled, finished];
+        var store = CreateStore(browser);
+        await store.InitializeAsync();
+        Assert.Equal(2, store.State.SchemaVersion);
+        Assert.Equal(2, store.State.Sessions[0].Exercises[0].Parts.Count);
+        Assert.Empty(store.State.Sessions[1].Exercises[0].Parts);
+        Assert.Equal("40,", store.State.Sessions[1].Exercises[0].QuickWeightInput);
+        Assert.Empty(store.State.Sessions[2].Exercises[0].Parts);
+        Assert.NotNull(store.State.Sessions[2].FinishedAt);
+    }
+
+    [Fact]
+    public async Task Superset_drafts_and_results_survive_pause_reload_and_backup_without_cross_copying()
+    {
+        var browser = new StorageJavascript();
+        browser.Stored.Plan = SupersetTests.Plan();
+        var store = CreateStore(browser);
+        await store.InitializeAsync();
+        await store.StartAsync();
+        var id = store.CurrentSession!.Id;
+        await store.UpdateQuickDraftAsync(id, 5, "weight", "40,5", 0);
+        await store.UpdateQuickDraftAsync(id, 5, "reps", "10", 0);
+        await store.FillRemainingSetsAsync(id, 5, "40,5", "10", 0);
+        await store.UpdateQuickDraftAsync(id, 5, "weight", "6,", 1);
+        await store.UpdateQuickDraftAsync(id, 5, "reps", "15", 1);
+        Assert.False(await store.CompleteAsync(id));
+        await store.PauseAsync(id);
+
+        var reloaded = CreateStore(browser);
+        await reloaded.InitializeAsync();
+        Assert.True(reloaded.CurrentSession!.IsPaused);
+        Assert.Equal(2, reloaded.State.SchemaVersion);
+        Assert.Equal("6,", reloaded.CurrentSession.Exercises[0].Parts[1].QuickWeightInput);
+        Assert.All(reloaded.CurrentSession.Exercises[0].Parts[0].Sets, set => Assert.Equal(40.5m, set.Weight));
+        Assert.All(reloaded.CurrentSession.Exercises[0].Parts[1].Sets, set => Assert.Null(set.Weight));
+        await reloaded.StartAsync();
+        await reloaded.FillRemainingSetsAsync(id, 5, "6", "15", 1);
+        Assert.True(await reloaded.CompleteAsync(id));
+        var pending = Assert.Single(reloaded.State.Outbox);
+        Assert.Single(pending.Cells);
+        Assert.Contains("6 кг × 15", pending.Cells[0].Load);
+
+        var restored = CreateStore(new StorageJavascript());
+        await restored.InitializeAsync();
+        await restored.ImportAsync(JsonSerializer.Serialize(reloaded.State));
+        Assert.Equal(2, restored.State.Sessions[0].Exercises[0].Parts.Count);
+        Assert.Equal(990, restored.State.Sessions[0].Volume);
+        Assert.Single(restored.State.Outbox);
+    }
+
+    [Fact]
+    public async Task Superset_single_set_copy_stays_in_its_part_and_failed_save_preserves_both_parts()
+    {
+        var browser = new StorageJavascript();
+        browser.Stored.Plan = SupersetTests.Plan();
+        var store = CreateStore(browser);
+        await store.InitializeAsync();
+        await store.StartAsync();
+        var id = store.CurrentSession!.Id;
+        await store.UpdateSetAsync(id, 5, 0, "weight", "7", 1);
+        await store.UpdateSetAsync(id, 5, 0, "reps", "12", 1);
+        await store.ToggleSetAsync(id, 5, 0, 1);
+        Assert.Equal(7, store.CurrentSession.Exercises[0].Parts[1].Sets[1].Weight);
+        Assert.All(store.CurrentSession.Exercises[0].Parts[0].Sets, set => Assert.Null(set.Weight));
+        browser.FailWrites = true;
+        Assert.False(await store.FillRemainingSetsAsync(id, 5, "50", "8", 0));
+        Assert.All(browser.Stored.Sessions[0].Exercises[0].Parts[0].Sets, set => Assert.Null(set.Weight));
+        Assert.Equal(7, browser.Stored.Sessions[0].Exercises[0].Parts[1].Sets[0].Weight);
+    }
+
+    [Fact]
     public async Task Bulk_entry_completes_exercise_and_persists_without_inventing_reserve()
     {
         var browser = new StorageJavascript();

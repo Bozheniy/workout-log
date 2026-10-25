@@ -10,6 +10,29 @@ namespace WorkoutLog.Tests;
 public sealed class GoogleGatewayTests
 {
     [Fact]
+    public async Task Superset_writes_one_cell_and_retries_without_duplicate_or_reserve_changes()
+    {
+        var handler = new SheetHandler { LoseFirstWriteResponse = true };
+        handler.Rows[4][0] = SupersetTests.Name;
+        handler.Rows[4][4] = "=SUM(A1:A2)";
+        var plan = SheetParser.ParseRows(handler.Rows, "test-sheet", 42);
+        var session = WorkoutRules.Start(plan, plan.Days[0], 1);
+        WorkoutRules.FillRemainingSets(session, 5, "40", "10", 0);
+        WorkoutRules.FillRemainingSets(session, 5, "6", "15", 1);
+        var upload = WorkoutRules.Complete(session);
+        var gateway = CreateGateway(handler);
+        await Assert.ThrowsAsync<HttpRequestException>(() => gateway.UploadAsync(upload));
+        await gateway.UploadAsync(upload);
+        Assert.Equal(1, handler.Writes);
+        var data = handler.LastBody!.RootElement.GetProperty("data");
+        Assert.Equal(1, data.GetArrayLength());
+        Assert.Equal("'План ''силовой'''!D5", data[0].GetProperty("range").GetString());
+        Assert.Equal(1, data[0].GetProperty("values")[0].GetArrayLength());
+        Assert.Equal("=SUM(A1:A2)", handler.Rows[4][4]);
+        Assert.Contains("2. Отведения гантелей", handler.Rows[4][3]);
+    }
+
+    [Fact]
     public async Task Upload_writes_only_load_and_reserve_in_the_selected_sheet()
     {
         var handler = new SheetHandler();

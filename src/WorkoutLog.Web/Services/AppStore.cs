@@ -44,9 +44,15 @@ public sealed class AppStore(
         try
         {
             State = await storage.LoadAsync() ?? new LocalState();
-            if (State.SchemaVersion != 1)
+            if (State.SchemaVersion is < 1 or > 2)
             {
                 throw new InvalidOperationException("Эта версия данных новее приложения. Обновите приложение.");
+            }
+            // Старое приложение не должно перезаписать данные, не зная о частях суперсета.
+            State.SchemaVersion = 2;
+            foreach (var session in State.Sessions)
+            {
+                SupersetRules.PrepareEmptyEntries(session);
             }
             // Старые резервные копии могли не содержать настроек прогрессии.
             State.ProgressionSettings ??= [];
@@ -206,10 +212,8 @@ public sealed class AppStore(
             }
             else
             {
-                if (!existing.Exercises.Any(exercise => exercise.Sets.Any(set =>
-                    set.Done || set.Weight.HasValue || set.Repetitions.HasValue || set.Reserve.HasValue
-                    || set.WeightInput.Length > 0 || set.ReserveInput.Length > 0)
-                    || exercise.QuickWeightInput.Length > 0 || exercise.QuickRepetitionsInput.Length > 0))
+                SupersetRules.PrepareEmptyEntries(existing);
+                if (!existing.Exercises.SelectMany(exercise => exercise.Entries).Any(SupersetRules.HasInput))
                 {
                     existing.StartedAt = DateTimeOffset.UtcNow;
                 }
@@ -247,13 +251,13 @@ public sealed class AppStore(
         return saved;
     }
 
-    public Task<bool> UpdateQuickDraftAsync(string sessionId, int row, string field, string value)
+    public Task<bool> UpdateQuickDraftAsync(string sessionId, int row, string field, string value, int? partIndex = null)
     {
         return MutateAsync(state =>
         {
             var session = state.Sessions.Single(item => item.Id == sessionId);
             EnsureEditable(session);
-            var exercise = session.Exercises.Single(item => item.Row == row);
+            var exercise = session.Exercises.Single(item => item.Row == row).Entry(partIndex);
             if (field == "weight")
             {
                 exercise.QuickWeightInput = value;
@@ -273,13 +277,13 @@ public sealed class AppStore(
         }
     }
 
-    public Task<bool> UpdateSetAsync(string sessionId, int row, int index, string field, string value)
+    public Task<bool> UpdateSetAsync(string sessionId, int row, int index, string field, string value, int? partIndex = null)
     {
         return MutateAsync(state =>
         {
             var session = state.Sessions.Single(item => item.Id == sessionId);
             EnsureEditable(session);
-            var exercise = session.Exercises.Single(item => item.Row == row);
+            var exercise = session.Exercises.Single(item => item.Row == row).Entry(partIndex);
             var set = exercise.Sets[index];
             if (set.Done || exercise.Skipped)
             {
@@ -304,23 +308,23 @@ public sealed class AppStore(
         });
     }
 
-    public Task<bool> FillRemainingSetsAsync(string sessionId, int row, string weight, string repetitions)
+    public Task<bool> FillRemainingSetsAsync(string sessionId, int row, string weight, string repetitions, int? partIndex = null)
     {
         // Все подходы сохраняются одной транзакцией IndexedDB, включая работу без сети.
         return MutateAsync(state =>
         {
             var session = state.Sessions.Single(item => item.Id == sessionId);
-            WorkoutRules.FillRemainingSets(session, row, weight, repetitions);
+            WorkoutRules.FillRemainingSets(session, row, weight, repetitions, partIndex);
         });
     }
 
-    public async Task<bool> ToggleSetAsync(string sessionId, int row, int index)
+    public async Task<bool> ToggleSetAsync(string sessionId, int row, int index, int? partIndex = null)
     {
         return await MutateAsync(state =>
         {
             var session = state.Sessions.Single(item => item.Id == sessionId);
             EnsureEditable(session);
-            var exercise = session.Exercises.Single(item => item.Row == row);
+            var exercise = session.Exercises.Single(item => item.Row == row).Entry(partIndex);
             var set = exercise.Sets[index];
             if (exercise.Skipped)
             {
@@ -534,7 +538,7 @@ public sealed class AppStore(
     public async Task<bool> ImportAsync(string json)
     {
         var incoming = JsonSerializer.Deserialize<LocalState>(json);
-        if (incoming is null || incoming.SchemaVersion != 1 || incoming.Settings is null
+        if (incoming is null || incoming.SchemaVersion is < 1 or > 2 || incoming.Settings is null
             || incoming.Sessions is null || incoming.Outbox is null)
         {
             throw new InvalidOperationException("Файл не является резервной копией РИТМ.");
@@ -546,6 +550,7 @@ public sealed class AppStore(
             {
                 if (state.Sessions.All(existing => existing.Id != session.Id))
                 {
+                    SupersetRules.PrepareEmptyEntries(session);
                     state.Sessions.Add(session);
                     var pending = incoming.Outbox.SingleOrDefault(item => item.SessionId == session.Id);
                     if (pending is not null && session.SyncedAt is null)

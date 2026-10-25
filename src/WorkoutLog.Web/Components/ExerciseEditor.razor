@@ -1,0 +1,73 @@
+<section class="exercise-entry" aria-label="@Entry.Name">
+    @if (PartIndex is not null)
+    {
+        <h3 class="part-title"><span>@(PartIndex + 1)</span>@Entry.Name</h3>
+    }
+    <ProgressionPanel Context="@Context" />
+    @if (IsActive && !Entry.Skipped && Entry.Sets.Any(set => !set.Done))
+    {
+        <section class="quick-sets" aria-label="@($"Общий ввод: {Entry.Name}")">
+            <strong>@(Entry.Sets.Any(set => set.Done) ? "Для оставшихся подходов" : "Для всех подходов")</strong>
+            <div class="quick-set-fields">
+                <label>
+                    Вес, кг
+                    <input type="text" inputmode="decimal" maxlength="7" autocomplete="off" placeholder="—"
+                           aria-label="@($"Общий вес: {Entry.Name}")" disabled="@Store.StorageFailed"
+                           value="@Entry.QuickWeightInput" @oninput='args => UpdateQuickDraftAsync("weight", args)' />
+                </label>
+                <label>
+                    Повторы
+                    <input type="text" inputmode="numeric" maxlength="3" autocomplete="off" placeholder="—"
+                           aria-label="@($"Общие повторы: {Entry.Name}")" disabled="@Store.StorageFailed"
+                           value="@Entry.QuickRepetitionsInput" @oninput='args => UpdateQuickDraftAsync("reps", args)' />
+                </label>
+                <button class="button secondary" disabled="@Store.StorageFailed"
+                        @onclick="ApplyQuickDraftAsync">Применить</button>
+            </div>
+            <small class="quick-help">Применить и отметить упражнение выполненным.</small>
+        </section>
+    }
+    @if (ExerciseError is not null)
+    {
+        <p class="quick-error" role="alert">@ExerciseError</p>
+    }
+    <div class="set-labels"><span>ПОДХОД</span><span>ВЕС, КГ</span><span>ПОВТОРЫ</span><span>ЗАПАС</span><span></span></div>
+    @for (var setNumber = 0; setNumber < Entry.Sets.Count; setNumber++)
+    {
+        var setIndex = setNumber;
+        var set = Entry.Sets[setIndex];
+        var locked = set.Done || Entry.Skipped || !IsActive || Store.StorageFailed;
+        <div class="set-row @(set.Done ? "done" : "")" @key="@(SessionId + ExerciseRow + "-" + setIndex)">
+            <span class="set-number">@((setIndex + 1).ToString("00"))</span>
+            <input type="text" inputmode="decimal" maxlength="7" autocomplete="off" placeholder="—"
+                   aria-label="@($"{Entry.Name}, подход {setIndex + 1}, вес в кг")" disabled="@locked"
+                   value="@(set.Done || string.IsNullOrEmpty(set.WeightInput) ? FormatWeight(set.Weight) : set.WeightInput)" @oninput='args => UpdateSetAsync(setIndex, "weight", args)' />
+            <input type="text" inputmode="numeric" maxlength="3" autocomplete="off" placeholder="—"
+                   aria-label="@($"{Entry.Name}, подход {setIndex + 1}, повторы")" disabled="@locked"
+                   value="@set.Repetitions" @oninput='args => UpdateSetAsync(setIndex, "reps", args)' />
+            <input type="text" inputmode="numeric" maxlength="2" autocomplete="off" placeholder="—"
+                   aria-label="@($"{Entry.Name}, подход {setIndex + 1}, запас повторений")" disabled="@locked"
+                   value="@(string.IsNullOrEmpty(set.ReserveInput) ? set.Reserve?.ToString() : set.ReserveInput)" @oninput='args => UpdateSetAsync(setIndex, "reserve", args)' />
+            <button class="set-check" disabled="@(Entry.Skipped || !IsActive || Store.StorageFailed)"
+                    aria-label="@(set.Done ? $"Изменить подход {setIndex + 1}: {Entry.Name}" : $"Выполнить подход {setIndex + 1}: {Entry.Name}")"
+                    aria-pressed="@(set.Done ? "true" : "false")" @onclick="() => ToggleSetAsync(setIndex)"><Icon Name="check" Size="20" /></button>
+        </div>
+    }
+    <div class="exercise-bottom"><span>Запас — необязательно.</span>
+        @if (IsActive)
+        {
+            <button class="text-button" @onclick="SkipAsync">@(Entry.Skipped ? "Вернуть" : "Пропустить остаток")</button>
+        }
+    </div>
+    <div class="technique-check">
+        <label for="@TechniqueId">Техника</label>
+        <select id="@TechniqueId" class="field"
+                value="@TechniqueValue"
+                disabled="@(!IsActive || Store.StorageFailed)"
+                @onchange="args => SaveTechniqueAsync(args)">
+            <option value="">Ещё не отмечено</option>
+            <option value="yes">Сохранена во всех подходах</option>
+            <option value="no">Были нарушения</option>
+        </select>
+    </div>
+</section>

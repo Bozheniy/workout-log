@@ -34,6 +34,7 @@ public static class WorkoutRules
                 Sets = Enumerable.Range(0, prescription.Sets).Select(_ => new SetResult()).ToList()
             });
         }
+        SupersetRules.PrepareEmptyEntries(session);
         return session;
     }
 
@@ -59,7 +60,8 @@ public static class WorkoutRules
             : "";
     }
 
-    public static void FillRemainingSets(WorkoutSession session, int exerciseRow, string weightInput, string repetitionsInput)
+    public static void FillRemainingSets(WorkoutSession session, int exerciseRow, string weightInput, string repetitionsInput,
+        int? partIndex = null)
     {
         if (session.FinishedAt is not null)
         {
@@ -69,7 +71,7 @@ public static class WorkoutRules
         {
             throw new InvalidOperationException("Сначала продолжите тренировку.");
         }
-        var exercise = session.Exercises.Single(item => item.Row == exerciseRow);
+        var exercise = session.Exercises.Single(item => item.Row == exerciseRow).Entry(partIndex);
         if (exercise.Skipped)
         {
             throw new InvalidOperationException("Сначала верните пропущенное упражнение.");
@@ -118,12 +120,14 @@ public static class WorkoutRules
         {
             return "Пока нет выполненных подходов. Нажмите «Применить» в упражнении или отметьте подход галочкой.";
         }
-        var unfinished = session.Exercises.Where(exercise => !exercise.Skipped && exercise.Sets.Any(set => !set.Done)).ToList();
+        var unfinished = session.Exercises.SelectMany(exercise => exercise.Entries)
+            .Where(exercise => !exercise.Skipped && exercise.Sets.Any(set => !set.Done)).ToList();
         if (unfinished.Count > 0)
         {
             return $"Остались незавершённые упражнения: {unfinished.Count}. Выполните их или пропустите остаток.";
         }
-        if (session.Exercises.SelectMany(exercise => exercise.Sets).Any(set => set.Done && !IsValid(set)))
+        if (session.Exercises.SelectMany(exercise => exercise.Entries).SelectMany(entry => entry.Sets)
+            .Any(set => set.Done && !IsValid(set)))
         {
             return "Проверьте вес и повторы выполненных подходов. Запас — от 0 до 20 или пустое поле.";
         }
@@ -150,9 +154,8 @@ public static class WorkoutRules
 
         foreach (var exercise in session.Exercises)
         {
-            var completed = exercise.Sets.Where(set => set.Done).ToList();
             // Полностью пропущенное упражнение оставляет таблицу без изменений.
-            if (completed.Count == 0)
+            if (exercise.CompletedSets == 0)
             {
                 continue;
             }
@@ -166,9 +169,8 @@ public static class WorkoutRules
                 PlannedRepetitions = exercise.PlannedRepetitions,
                 ExpectedLoad = exercise.BaselineLoad,
                 ExpectedReserve = exercise.BaselineReserve,
-                Load = string.Join("\n", completed.Select(set =>
-                    $"{set.Weight!.Value.ToString("0.##", CultureInfo.InvariantCulture)} кг × {set.Repetitions}")),
-                Reserve = FormatReserves(completed)
+                Load = ExerciseCellFormat.Load(exercise),
+                Reserve = ExerciseCellFormat.Reserve(exercise)
             });
         }
         session.FinishedAt = DateTimeOffset.UtcNow;

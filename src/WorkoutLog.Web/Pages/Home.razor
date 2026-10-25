@@ -122,8 +122,15 @@ else
                                         <p>@prescription.ExistingLoad</p>
                                     </details>
                                 }
-                                <ProgressionPanel Context="@ProgressionFor(exercise.Row, exercise.Name, prescription.Sets, prescription.Repetitions)"
-                                                  @key="@($"preview-{Store.State.SelectedWeek}-{exercise.Row}")" />
+                                @foreach (var part in PreviewParts(exercise, prescription))
+                                {
+                                    @if (part.Name is not null)
+                                    {
+                                        <h3 class="preview-part-title">@part.Name</h3>
+                                    }
+                                    <ProgressionPanel Context="@ProgressionFor(exercise.Row, exercise.Name, prescription.Sets, part.Repetitions, part.Name)"
+                                                      @key="@($"preview-{Store.State.SelectedWeek}-{exercise.Row}-{part.Name}")" />
+                                }
                             </div>
                         }
                     </article>
@@ -137,10 +144,10 @@ else
                     var index = number;
                     var exercise = Session.Exercises[index];
                     var expanded = ExpandedRow == exercise.Row;
-                    <article id="@($"exercise-{exercise.Row}")" class="exercise-card @(exercise.Skipped ? "skipped" : "")">
+                    <article id="@($"exercise-{exercise.Row}")" class="exercise-card @(exercise.IsSkipped ? "skipped" : "")">
                         <button class="exercise-heading" @onclick="() => ToggleExpanded(exercise.Row)" aria-expanded="@(expanded ? "true" : "false")">
-                            <span class="exercise-number @(exercise.Sets.All(set => set.Done) ? "complete" : "")">
-                                @if (exercise.Sets.All(set => set.Done))
+                            <span class="exercise-number @(exercise.CompletedSets == exercise.TotalSets ? "complete" : "")">
+                                @if (exercise.CompletedSets == exercise.TotalSets)
                                 {
                                     <Icon Name="check" Size="18" />
                                 }
@@ -149,7 +156,7 @@ else
                                     @((index + 1).ToString("00"))
                                 }
                             </span>
-                            <span class="exercise-title"><strong>@exercise.Name</strong><small>@exercise.Sets.Count подхода × @exercise.PlannedRepetitions повторений <span>· @(exercise.Skipped ? "Пропущено" : $"{exercise.Sets.Count(set => set.Done)}/{exercise.Sets.Count} выполнено")</span></small></span>
+                            <span class="exercise-title"><strong>@exercise.Name</strong><small>@ExerciseSummary(exercise) <span>· @(exercise.IsSkipped ? "Пропущено" : $"{exercise.CompletedSets}/{exercise.TotalSets} выполнено")</span></small></span>
                             <span class="chevron @(expanded ? "open" : "")"><Icon Name="chevron" Size="18" /></span>
                         </button>
                         @if (expanded)
@@ -162,74 +169,20 @@ else
                                         <p>@exercise.BaselineLoad</p>
                                     </details>
                                 }
-                                <ProgressionPanel Context="@ProgressionFor(exercise.Row, exercise.Name, exercise.Sets.Count, exercise.PlannedRepetitions)"
-                                                  @key="@(Session.Id + exercise.Row)" />
-                                @if (IsActive && !exercise.Skipped && exercise.Sets.Any(set => !set.Done))
+                                @if (exercise.Parts.Count == 0 && SupersetRules.Names(exercise.Name).Count > 0 && IsActive)
                                 {
-                                    <section class="quick-sets" aria-label="@($"Общий ввод: {exercise.Name}")">
-                                        <strong>@(exercise.Sets.Any(set => set.Done) ? "Для оставшихся подходов" : "Для всех подходов")</strong>
-                                        <div class="quick-set-fields">
-                                            <label>
-                                                Вес, кг
-                                                <input type="text" inputmode="decimal" maxlength="7" autocomplete="off" placeholder="—"
-                                                       aria-label="@($"Общий вес: {exercise.Name}")" disabled="@Store.StorageFailed"
-                                                       value="@exercise.QuickWeightInput" @oninput='args => UpdateQuickDraftAsync(exercise.Row, "weight", args)' />
-                                            </label>
-                                            <label>
-                                                Повторы
-                                                <input type="text" inputmode="numeric" maxlength="3" autocomplete="off" placeholder="—"
-                                                       aria-label="@($"Общие повторы: {exercise.Name}")" disabled="@Store.StorageFailed"
-                                                       value="@exercise.QuickRepetitionsInput" @oninput='args => UpdateQuickDraftAsync(exercise.Row, "reps", args)' />
-                                            </label>
-                                            <button class="button secondary" disabled="@Store.StorageFailed"
-                                                    @onclick="() => ApplyQuickDraftAsync(exercise)">Применить</button>
-                                        </div>
-                                        <small class="quick-help">Применить и отметить упражнение выполненным.</small>
-                                    </section>
+                                    <p class="split-hint">Уже введённые общие значения останутся у первого упражнения.</p>
+                                    <button class="button secondary" disabled="@Store.StorageFailed" @onclick="() => SplitSupersetAsync(exercise.Row)">Вводить упражнения отдельно</button>
                                 }
-                                @if (ErrorRow == exercise.Row && ExerciseError is not null)
+                                @for (var partNumber = 0; partNumber < exercise.Entries.Count(); partNumber++)
                                 {
-                                    <p class="quick-error" role="alert">@ExerciseError</p>
+                                    int? partIndex = exercise.Parts.Count == 0 ? null : partNumber;
+                                    var entry = exercise.Entry(partIndex);
+                                    <ExerciseEditor SessionId="@Session.Id" ExerciseRow="@exercise.Row" Entry="@entry"
+                                                    PartIndex="@partIndex" IsActive="@IsActive" OnChanged="ClearFinishError"
+                                                    Context="@ProgressionFor(exercise.Row, exercise.Name, entry.Sets.Count, entry.PlannedRepetitions, partIndex is null ? null : entry.Name)"
+                                                    @key="@(Session.Id + exercise.Row + ":" + partIndex)" />
                                 }
-                                <div class="set-labels"><span>ПОДХОД</span><span>ВЕС, КГ</span><span>ПОВТОРЫ</span><span>ЗАПАС</span><span></span></div>
-                                @for (var setNumber = 0; setNumber < exercise.Sets.Count; setNumber++)
-                                {
-                                    var setIndex = setNumber;
-                                    var set = exercise.Sets[setIndex];
-                                    var locked = set.Done || exercise.Skipped || !IsActive || Store.StorageFailed;
-                                    <div class="set-row @(set.Done ? "done" : "")" @key="@(Session.Id + exercise.Row + "-" + setIndex)">
-                                        <span class="set-number">@((setIndex + 1).ToString("00"))</span>
-                                        <input type="text" inputmode="decimal" maxlength="7" autocomplete="off" placeholder="—"
-                                               aria-label="@($"{exercise.Name}, подход {setIndex + 1}, вес в кг")" disabled="@locked"
-                                               value="@(set.Done || string.IsNullOrEmpty(set.WeightInput) ? FormatWeight(set.Weight) : set.WeightInput)" @oninput='args => UpdateSetAsync(exercise.Row, setIndex, "weight", args)' />
-                                        <input type="text" inputmode="numeric" maxlength="3" autocomplete="off" placeholder="—"
-                                               aria-label="@($"{exercise.Name}, подход {setIndex + 1}, повторы")" disabled="@locked"
-                                               value="@set.Repetitions" @oninput='args => UpdateSetAsync(exercise.Row, setIndex, "reps", args)' />
-                                        <input type="text" inputmode="numeric" maxlength="2" autocomplete="off" placeholder="—"
-                                               aria-label="@($"{exercise.Name}, подход {setIndex + 1}, запас повторений")" disabled="@locked"
-                                               value="@(string.IsNullOrEmpty(set.ReserveInput) ? set.Reserve?.ToString() : set.ReserveInput)" @oninput='args => UpdateSetAsync(exercise.Row, setIndex, "reserve", args)' />
-                                        <button class="set-check" disabled="@(exercise.Skipped || !IsActive || Store.StorageFailed)"
-                                                aria-label="@(set.Done ? $"Изменить подход {setIndex + 1}: {exercise.Name}" : $"Выполнить подход {setIndex + 1}: {exercise.Name}")"
-                                                aria-pressed="@(set.Done ? "true" : "false")" @onclick="() => ToggleSetAsync(exercise.Row, setIndex)"><Icon Name="check" Size="20" /></button>
-                                    </div>
-                                }
-                                <div class="exercise-bottom"><span>Запас — необязательно.</span>
-                                    @if (IsActive)
-                                    {
-                                        <button class="text-button" @onclick="() => SkipAsync(exercise.Row)">@(exercise.Skipped ? "Вернуть" : "Пропустить остаток")</button>
-                                    }
-                                </div>
-                                <div class="technique-check">
-                                    <label for="@($"technique-{exercise.Row}")">Техника</label>
-                                    <select id="@($"technique-{exercise.Row}")" class="field"
-                                            value="@TechniqueValue(exercise)"
-                                            disabled="@(!IsActive || Store.StorageFailed)"
-                                            @onchange="args => SaveTechniqueAsync(exercise.Row, args)">
-                                        <option value="">Ещё не отмечено</option>
-                                        <option value="yes">Сохранена во всех подходах</option>
-                                        <option value="no">Были нарушения</option>
-                                    </select>
-                                </div>
                             </div>
                         }
                     </article>
@@ -257,7 +210,7 @@ else
                         @(FinishError ?? FinishProblem ?? "Все подходы отмечены. Можно завершать.")
                         @if (FinishError is not null)
                         {
-                            @foreach (var unfinished in Session.Exercises.Where(exercise => !exercise.Skipped && exercise.Sets.Any(set => !set.Done)))
+                            @foreach (var unfinished in Session.Exercises.Where(exercise => !exercise.IsComplete))
                             {
                                 <button class="text-button" @onclick="() => OpenExercise(unfinished.Row)">@unfinished.Name</button>
                             }

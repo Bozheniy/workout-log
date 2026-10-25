@@ -27,7 +27,7 @@ public static partial class PreviousWorkoutFinder
                     && (context.StartedAt is null || item.FinishedAt <= context.StartedAt))
                 .Where(item => item.Exercises.Any(result =>
                     result.Row == context.ExerciseRow && result.Name == context.ExerciseName
-                    && result.Sets.Any(set => set.Done)))
+                    && result.CompletedSets > 0))
                 .OrderByDescending(item => item.FinishedAt)
                 .FirstOrDefault();
             var result = session?.Exercises.Single(item =>
@@ -41,12 +41,30 @@ public static partial class PreviousWorkoutFinder
                 // Если после синхронизации ячейки исправили вручную, используем их новое содержимое.
                 if (session.SyncedAt is null || !hasSheetResult || MatchesSheet(result, sheetWeek!))
                 {
-                    return FromLocal(session, result);
+                    var entry = context.PartName is null
+                        ? result.Parts.Count == 0 ? result : null
+                        : result.Parts.SingleOrDefault(part => part.Name == context.PartName);
+                    if (entry is not null)
+                    {
+                        return FromLocal(session, entry);
+                    }
+                    // Старый общий вес нельзя приписать одной из частей суперсета.
+                    return new PreviousExercise
+                    {
+                        Week = week,
+                        Source = "История устройства · общая запись",
+                        RawLoad = ExerciseCellFormat.Load(result),
+                        Parsed = false
+                    };
                 }
             }
             if (hasSheetResult)
             {
-                return FromSheet(sheetWeek!);
+                var names = SupersetRules.Names(context.ExerciseName);
+                var partIndex = context.PartName is null ? -1 : names.IndexOf(context.PartName);
+                var repetitions = partIndex < 0 ? sheetWeek!.Repetitions
+                    : SupersetRules.Repetitions(sheetWeek!.Repetitions, partIndex, names.Count);
+                return FromSheet(sheetWeek, context.PartName, repetitions);
             }
         }
         return null;
@@ -54,15 +72,13 @@ public static partial class PreviousWorkoutFinder
 
     private static bool MatchesSheet(ExerciseResult result, WeekPrescription week)
     {
-        var completed = result.Sets.Where(set => set.Done).ToList();
-        var load = string.Join("\n", completed.Select(set =>
-            $"{set.Weight?.ToString("0.##", CultureInfo.InvariantCulture)} кг × {set.Repetitions}"));
-        var reserve = WorkoutRules.FormatReserves(completed);
+        var load = ExerciseCellFormat.Load(result);
+        var reserve = ExerciseCellFormat.Reserve(result);
         return load == week.ExistingLoad.Replace("\r\n", "\n")
             && (reserve.Length == 0 || reserve == week.ExistingReserve);
     }
 
-    private static PreviousExercise FromLocal(WorkoutSession session, ExerciseResult exercise)
+    private static PreviousExercise FromLocal(WorkoutSession session, ExercisePerformance exercise)
     {
         var sets = exercise.Sets.Select((set, index) => (Set: set, Number: index + 1))
             .Where(item => item.Set.Done).ToList();
@@ -83,14 +99,20 @@ public static partial class PreviousWorkoutFinder
         };
     }
 
-    public static PreviousExercise FromSheet(WeekPrescription week)
+    public static PreviousExercise FromSheet(WeekPrescription week, string? partName = null, string? repetitionsRange = null)
     {
-        var loads = SplitValues(week.ExistingLoad);
-        var reserves = SplitValues(week.ExistingReserve);
+        var loadText = partName is null ? week.ExistingLoad : ExerciseCellFormat.ReadPart(week.ExistingLoad, partName);
+        var reserveText = partName is null ? week.ExistingReserve : ExerciseCellFormat.ReadPart(week.ExistingReserve, partName);
+        var loads = SplitValues(loadText ?? "");
+        var reserves = SplitValues(reserveText ?? "");
         var sets = new List<PreviousSet>();
         var parsed = loads.Length is > 0 and <= 30;
         foreach (var (load, index) in loads.Select((value, index) => (value, index)))
         {
+            if (partName is not null && load == "—")
+            {
+                continue;
+            }
             var match = LoadPattern().Match(load);
             if (!match.Success
                 || !decimal.TryParse(match.Groups[1].Value.Replace(',', '.'),
@@ -115,11 +137,11 @@ public static partial class PreviousWorkoutFinder
             Week = week.Number,
             Source = "Сохранённая Google-таблица",
             PlannedSets = week.Sets,
-            Repetitions = week.Repetitions,
-            RawLoad = week.ExistingLoad,
-            RawReserve = week.ExistingReserve,
+            Repetitions = repetitionsRange ?? week.Repetitions,
+            RawLoad = loadText ?? week.ExistingLoad,
+            RawReserve = reserveText ?? "",
             Parsed = parsed,
-            Complete = parsed && loads.Length == week.Sets,
+            Complete = parsed && sets.Count == week.Sets,
             Sets = parsed ? sets : []
         };
     }

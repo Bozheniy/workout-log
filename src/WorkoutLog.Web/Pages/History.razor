@@ -65,21 +65,31 @@ else
             <div class="history-body">
                 @foreach (var exercise in session.Exercises)
                 {
-                    <div class="history-exercise"><strong>@exercise.Name</strong><div class="result-chips">
-                        @foreach (var set in exercise.Sets.Where(set => set.Done))
+                    <div class="history-exercise">
+                        <strong>@exercise.Name</strong>
+                        @foreach (var entry in exercise.Entries)
                         {
-                            <span>@set.Weight кг × @set.Repetitions
-                                @if (set.Reserve is not null)
+                            @if (exercise.Parts.Count > 0)
+                            {
+                                <p class="history-part-name">@entry.Name</p>
+                            }
+                            <div class="result-chips">
+                                @foreach (var set in entry.Sets.Where(set => set.Done))
                                 {
-                                    <small>запас @set.Reserve</small>
+                                    <span>@set.Weight кг × @set.Repetitions
+                                        @if (set.Reserve is not null)
+                                        {
+                                            <small>запас @set.Reserve</small>
+                                        }
+                                    </span>
                                 }
-                            </span>
+                                @if (entry.Skipped)
+                                {
+                                    <span class="muted">Остаток пропущен</span>
+                                }
+                            </div>
                         }
-                        @if (exercise.Skipped)
-                        {
-                            <span class="muted">Остаток пропущен</span>
-                        }
-                    </div></div>
+                    </div>
                 }
                 @if (session.FinishedAt is null && CanResume(session))
                 {
