@@ -64,7 +64,7 @@ public static partial class PreviousWorkoutFinder
                 var partIndex = context.PartName is null ? -1 : names.IndexOf(context.PartName);
                 var repetitions = partIndex < 0 ? sheetWeek!.Repetitions
                     : SupersetRules.Repetitions(sheetWeek!.Repetitions, partIndex, names.Count);
-                return FromSheet(sheetWeek, context.PartName, repetitions);
+                return FromSheet(sheetWeek, context.PartName, repetitions, partIndex, names.Count);
             }
         }
         return null;
@@ -72,6 +72,36 @@ public static partial class PreviousWorkoutFinder
 
     private static bool MatchesSheet(ExerciseResult result, WeekPrescription week)
     {
+        if (result.Parts.Count > 0)
+        {
+            // Смена оформления ячейки не должна терять локальную отметку о технике.
+            // Сравниваем значения и номера кругов, понимая оба формата суперсетов.
+            var writesReserve = result.Entries.SelectMany(entry => entry.Sets)
+                .Any(set => set.Done && set.Reserve.HasValue);
+            for (var index = 0; index < result.Parts.Count; index++)
+            {
+                var part = result.Parts[index];
+                var remote = FromSheet(week, part.Name, part.PlannedRepetitions, index, result.Parts.Count);
+                var local = part.Sets.Select((set, number) => (Set: set, Number: number + 1))
+                    .Where(item => item.Set.Done).ToList();
+                if (!remote.Parsed || remote.Sets.Count != local.Count)
+                {
+                    return false;
+                }
+                for (var setIndex = 0; setIndex < local.Count; setIndex++)
+                {
+                    var expected = local[setIndex];
+                    var actual = remote.Sets[setIndex];
+                    if (actual.Number != expected.Number || actual.Weight != expected.Set.Weight
+                        || actual.Repetitions != expected.Set.Repetitions
+                        || (writesReserve && actual.Reserve != expected.Set.Reserve))
+                    {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
         var load = ExerciseCellFormat.Load(result);
         var reserve = ExerciseCellFormat.Reserve(result);
         return load == week.ExistingLoad.Replace("\r\n", "\n")
@@ -99,10 +129,13 @@ public static partial class PreviousWorkoutFinder
         };
     }
 
-    public static PreviousExercise FromSheet(WeekPrescription week, string? partName = null, string? repetitionsRange = null)
+    public static PreviousExercise FromSheet(WeekPrescription week, string? partName = null,
+        string? repetitionsRange = null, int partIndex = -1, int partCount = 0)
     {
-        var loadText = partName is null ? week.ExistingLoad : ExerciseCellFormat.ReadPart(week.ExistingLoad, partName);
-        var reserveText = partName is null ? week.ExistingReserve : ExerciseCellFormat.ReadPart(week.ExistingReserve, partName);
+        var loadText = partName is null ? week.ExistingLoad
+            : ExerciseCellFormat.ReadPart(week.ExistingLoad, partName, partIndex, partCount);
+        var reserveText = partName is null ? week.ExistingReserve
+            : ExerciseCellFormat.ReadPart(week.ExistingReserve, partName, partIndex, partCount);
         var loads = SplitValues(loadText ?? "");
         var reserves = SplitValues(reserveText ?? "");
         var sets = new List<PreviousSet>();

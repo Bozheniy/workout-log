@@ -29,7 +29,7 @@ public sealed class GoogleGatewayTests
         Assert.Equal("'План ''силовой'''!D5", data[0].GetProperty("range").GetString());
         Assert.Equal(1, data[0].GetProperty("values")[0].GetArrayLength());
         Assert.Equal("=SUM(A1:A2)", handler.Rows[4][4]);
-        Assert.Contains("2. Отведения гантелей", handler.Rows[4][3]);
+        Assert.Equal("40 кг×10/6 кг×15\n40 кг×10/6 кг×15", handler.Rows[4][3]);
     }
 
     [Fact]

@@ -61,7 +61,7 @@ public sealed class AppStoreTests
         Assert.True(await reloaded.CompleteAsync(id));
         var pending = Assert.Single(reloaded.State.Outbox);
         Assert.Single(pending.Cells);
-        Assert.Contains("6 кг × 15", pending.Cells[0].Load);
+        Assert.Equal("40.5 кг×10/6 кг×15\n40.5 кг×10/6 кг×15", pending.Cells[0].Load);
 
         var restored = CreateStore(new StorageJavascript());
         await restored.InitializeAsync();
